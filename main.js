@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain } = require("electron");
+const { app, BrowserWindow } = require("electron");
 const path = require("path");
 const WebSocket = require("ws");
 const { exec } = require("child_process");
@@ -54,6 +54,7 @@ function getCurrentChannel() {
 let channelNames = getCurrentChannel();
 console.log(`Initial Channel Names loaded: ${channelNames.join(", ")}`);
 
+// WebSocket connection
 const rws = new WebSocket("wss://rms.thesama.in");
 
 rws.on("open", () => {
@@ -108,38 +109,42 @@ function getMacAddress() {
 
 // Function to sync database with server
 async function syncDatabase() {
-  const db = new sqlite3.Database(dbPath, sqlite3.OPEN_READONLY, (err) => {
-    if (err) return console.error("Error opening database:", err.message);
+  const dbInstance = new sqlite3.Database(
+    dbPath,
+    sqlite3.OPEN_READONLY,
+    (err) => {
+      if (err) return console.error("Error opening database:", err.message);
 
-    db.all(`SELECT * FROM system_tracking`, async (err, rows) => {
-      if (err)
-        return console.error("Error reading from database:", err.message);
+      dbInstance.all(`SELECT * FROM system_tracking`, async (err, rows) => {
+        if (err)
+          return console.error("Error reading from database:", err.message);
 
-      try {
-        const response = await axios.post(
-          "https://rms.thesama.in/database-sync",
-          { data: rows }
-        );
-        console.log("Sync successful:", response.data);
-      } catch (error) {
-        console.error("Error syncing database:", error.message);
-      }
-    });
+        try {
+          const response = await axios.post(
+            "https://rms.thesama.in/database-sync",
+            { data: rows }
+          );
+          console.log("Sync successful:", response.data);
+        } catch (error) {
+          console.error("Error syncing database:", error.message);
+        }
+      });
 
-    db.close();
-  });
+      dbInstance.close();
+    }
+  );
 }
 
 // Sync database every 3 hours
 setInterval(syncDatabase, 10800000); // 3 hours in milliseconds
-syncDatabase();
+syncDatabase(); // Initial sync on startup
 
 // Execute command function
 const executeCommand = (command) => {
   return new Promise((resolve, reject) => {
     const macAddress = getMacAddress();
 
-    exec(command, (error, stdout, stderr) => {
+    exec(command, (error, stdout) => {
       if (error) {
         console.error(`Error executing command "${command}": ${error.message}`);
         reject(error);
@@ -151,7 +156,23 @@ const executeCommand = (command) => {
   });
 };
 
-// Clean up when all windows are closed.
+// Create main window
+function createWindow() {
+  const win = new BrowserWindow({
+    width: 800,
+    height: 600,
+    webPreferences: {
+      nodeIntegration: true,
+      contextIsolation: false,
+    },
+  });
+
+  win.loadFile("index.html"); // Load your HTML file
+}
+
+// Handle app lifecycle events
+app.whenReady().then(createWindow);
+
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
