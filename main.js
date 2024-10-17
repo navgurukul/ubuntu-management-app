@@ -117,7 +117,7 @@ async function syncDatabase() {
 
       try {
         const response = await axios.post(
-          "https://ms.thesama.in/database-sync",
+          "https://rms.thesama.in/database-sync",
           { data: rows }
         );
         console.log("Sync successful:", response.data);
