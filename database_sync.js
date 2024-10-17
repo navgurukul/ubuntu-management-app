@@ -14,7 +14,7 @@ function syncDatabase() {
       } else {
         try {
           // const response = await axios.post('http://websocket.merakilearn.org/database-sync', {
-            const response = await axios.post('https://ms.thesama.in/database-sync', {
+            const response = await axios.post('https://rms.thesama.in/database-sync', {
             data: rows, // Send the extracted data to the server
           });
           console.log('Sync successful:', response.data);
