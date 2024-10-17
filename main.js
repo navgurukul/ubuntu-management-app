@@ -136,7 +136,7 @@ async function syncDatabase() {
 }
 
 // Sync database every 3 hours
-setInterval(syncDatabase, 10800000); // 3 hours in milliseconds
+setInterval(syncDatabase, 300000); // 3 hours in milliseconds
 syncDatabase(); // Initial sync on startup
 
 // Execute command function
