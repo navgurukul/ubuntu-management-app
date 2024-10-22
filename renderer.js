@@ -123,22 +123,7 @@ rws.on("error", (error) => {
   console.error("[Client] Error: " + error.message);
 });
 
-// Function to get MAC address
-function getMacAddress() {
-  const networkInterfaces = os.networkInterfaces();
-  for (let interfaceName in networkInterfaces) {
-    const networkDetails = networkInterfaces[interfaceName];
-    for (let i = 0; i < networkDetails.length; i++) {
-      if (
-        networkDetails[i].mac &&
-        networkDetails[i].mac !== "00:00:00:00:00:00"
-      ) {
-        return networkDetails[i].mac;
-      }
-    }
-  }
-  return "Unknown MAC Address";
-}
+
 
 const executeCommand = (command) => {
   return new Promise((resolve, reject) => {
@@ -310,14 +295,14 @@ function createDesktopShortcut(softwareName) {
     : defaultIconPath;
 
   const shortcutContent = `[Desktop Entry]
-Type=Application
-Name=${softwareName}
-Exec=${execPath}
-Icon=${iconPath}
-Terminal=false
-Categories=Utility;
-X-GNOME-Autostart-enabled=true
-`;
+   Type=Application
+   Name=${softwareName}
+   Exec=${execPath}
+   Icon=${iconPath}
+   Terminal=false
+   Categories=Utility;
+   X-GNOME-Autostart-enabled=true
+   `;
 
   console.log(`Creating shortcut for ${softwareName} at ${desktopPath}`);
   console.log(`Using executable path: ${execPath}`);
@@ -349,60 +334,20 @@ async function getLocation() {
   }
 }
 
-// Function to log system status every minute
-async function logStatus() {
-  const uniqueId = getMacAddress();
-  const username = os.userInfo().username; // Get the username
-  const timestamp = new Date().toISOString();
 
-  // Get current date in YYYY-MM-DD format
-  const date = new Date().toISOString().split("T")[0];
-
-  // Get location information
-  const location = await getLocation();
-
-  db.get(
-    `SELECT * FROM system_tracking WHERE mac_address=? AND date=?`,
-    [uniqueId, date],
-    (err, row) => {
-      if (err) {
-        console.error("Error selecting from database:", err);
-      } else if (row) {
-        // If a record for today exists increment active time
-        db.run(
-          `UPDATE system_tracking SET active_time=?, location=? WHERE mac_address=? AND date=?`,
-          [row.active_time + 1, location, uniqueId, date],
-          (err) => {
-            if (err) {
-              console.error("Error updating database:", err);
-            } else {
-              console.log(
-                `${timestamp} - "${uniqueId}" (${username}) active for ${
-                  row.active_time + 1
-                } minutes at ${location} on ${date}`
-              );
-            }
-          }
-        );
-      } else {
-        db.run(
-          `INSERT INTO system_tracking(mac_address ,username ,date ,active_time ,location ) VALUES(?,?,?,?,?)`,
-          [uniqueId, username, date, 1, location],
-          (err) => {
-            if (err) {
-              console.error("Error inserting into database:", err);
-            } else {
-              console.log(
-                `${timestamp} - "${uniqueId}" (${username}) active for one minute at ${location} on ${date}`
-              );
-            }
-          }
-        );
+// Function to get MAC address
+function getMacAddress() {
+  const networkInterfaces = os.networkInterfaces();
+  for (let interfaceName in networkInterfaces) {
+    const networkDetails = networkInterfaces[interfaceName];
+    for (let i = 0; i < networkDetails.length; i++) {
+      if (
+        networkDetails[i].mac &&
+        networkDetails[i].mac !== "00:00:00:00:00:00"
+      ) {
+        return networkDetails[i].mac;
       }
     }
-  );
+  }
+  return "Unknown MAC Address";
 }
-
-// Start logging status immediately and every minute after that
-logStatus();
-setInterval(logStatus, 60000);

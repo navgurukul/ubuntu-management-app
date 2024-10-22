@@ -1,11 +1,45 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Laptop Automation Tool</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Channel Input</title>
 </head>
 <body>
-    <h1>Welcome to My Electron App</h1>
-    <p>WebSocket Client is running...</p>
-    <script src="renderer.js"></script>
+    <h1>Welcome to the Electron App</h1>
+    <div id="channel-prompt" style="display:none;">
+        <p>Please enter your channel name:</p>
+        <input type="text" id="channel-name" placeholder="Channel Name" />
+        <button onclick="submitChannelName()">Submit</button>
+
+
+    </div>
+
+    <button id="reset-channel-btn">Reset Channel</button>
+    <script>
+        const { ipcRenderer } = require("electron");
+
+        // Show the prompt when main process sends "prompt-channel-name" event
+        ipcRenderer.on("prompt-channel-name", () => {
+            document.getElementById("channel-prompt").style.display = "block";
+        });
+
+        // Function to submit the channel name and hide the input prompt
+        function submitChannelName() {
+            const channelName = document.getElementById("channel-name").value;
+            if (channelName) {
+                ipcRenderer.send("save-channel-name", channelName);
+                document.getElementById("channel-prompt").style.display = "none";
+            } else {
+                alert("Please enter a channel name.");
+            }
+        }
+
+ document.getElementById('reset-channel-btn').addEventListener('click', () => {
+        ipcRenderer.send('reset-channel');
+        alert("Channel has been reset. Restart the app to enter a new channel.");
+      });
+
+    </script>
 </body>
 </html>
