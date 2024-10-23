@@ -74,7 +74,7 @@ rws.on("message", async (data) => {
   const dataObj = JSON.parse(data);
   const commands = dataObj.commands;
   console.log(`[Client] Command received from server: ${typeof commands}`);
-  const macAddress = getMacAddress(); // Get the MAC address
+  const macAddress = getMacAddress(); 
 
   if (!Array.isArray(commands)) {
     console.error("Received commands is not an array:", commands);
