@@ -79,7 +79,7 @@ rws.on("message", async (data) => {
   if (!Array.isArray(commands)) {
     console.error("Received commands is not an array:", commands);
 
-    // Send an error message back to the server
+   
     rws.send(
       JSON.stringify({
         success: false,
@@ -87,7 +87,7 @@ rws.on("message", async (data) => {
         error: "Commands is not an array",
       })
     );
-    return; // Exit early if commands is not an array
+    return; 
   }
 
   try {
