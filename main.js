@@ -493,60 +493,84 @@ function getMacAddress() {
   }
   return "Unknown MAC Address";
 }
-// Function to log system status every minute
+
+function formatActiveTime(seconds) {
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = seconds % 60;
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+}
+
+function isValidTimeFormat(timeString) {
+  // Validate time format HH:MM:SS
+  const timePattern = /^\d{2}:\d{2}:\d{2}$/;
+  return timePattern.test(timeString);
+}
+
 async function logStatus() {
   const uniqueId = getMacAddress();
-  const username = os.userInfo().username; // Get the username
+  const username = os.userInfo().username;
   const timestamp = new Date().toISOString();
-
-  // Get current date in YYYY-MM-DD format
   const date = new Date().toISOString().split("T")[0];
-
-  // Get location information
   const location = await getLocation();
 
   db.get(
-    `SELECT * FROM system_tracking WHERE mac_address=? AND date=?`,
-    [uniqueId, date],
-    (err, row) => {
-      if (err) {
-        console.error("Error selecting from database:", err);
-      } else if (row) {
-        // If a record for today exists increment active time
-        db.run(
-          `UPDATE system_tracking SET active_time=?, location=? WHERE mac_address=? AND date=?`,
-          [row.active_time + 1, location, uniqueId, date],
-          (err) => {
-            if (err) {
-              console.error("Error updating database:", err);
-            } else {
-              console.log(
-                `${timestamp} - "${uniqueId}" (${username}) active for ${
-                  row.active_time + 1
-                } minutes at ${location} on ${date}`
+      `SELECT * FROM system_tracking WHERE mac_address=? AND date=?`,
+      [uniqueId, date],
+      (err, row) => {
+          if (err) {
+              console.error("Error selecting from database:", err);
+          } else if (row) {
+              // If a record for today exists
+              let activeTime = row.active_time;
+              console.log("Current active time in DB:", activeTime);
+
+              // Validate the format
+              if (!isValidTimeFormat(activeTime)) {
+                  console.error("Invalid active time format detected:", activeTime);
+                  // Reset active time to 00:00:00 if the format is invalid
+                  activeTime = "00:00:00";
+              }
+
+              // Convert HH:MM:SS to seconds
+              const activeTimeInSeconds = activeTime.split(':').reduce((acc, time) => (60 * acc) + +time, 0);
+              const newActiveTimeInSeconds = activeTimeInSeconds + 60; // Add one minute
+              const newActiveTime = formatActiveTime(newActiveTimeInSeconds);
+
+              // Update the database with the new active time
+              db.run(
+                  `UPDATE system_tracking SET active_time=?, location=? WHERE mac_address=? AND date=?`,
+                  [newActiveTime, location, uniqueId, date],
+                  (err) => {
+                      if (err) {
+                          console.error("Error updating database:", err);
+                      } else {
+                          console.log(
+                              `${timestamp} - "${uniqueId}" (${username}) active for ${newActiveTime} at ${location} on ${date}`
+                          );
+                      }
+                  }
               );
-            }
-          }
-        );
-      } else {
-        db.run(
-          `INSERT INTO system_tracking(mac_address ,username ,date ,active_time ,location ) VALUES(?,?,?,?,?)`,
-          [uniqueId, username, date, 1, location],
-          (err) => {
-            if (err) {
-              console.error("Error inserting into database:", err);
-            } else {
-              console.log(
-                `${timestamp} - "${uniqueId}" (${username}) active for one minute at ${location} on ${date}`
+          } else {
+              const newActiveTime = formatActiveTime(60); // Set to one minute for a new record
+
+              db.run(
+                  `INSERT INTO system_tracking(mac_address, username, date, active_time, location) VALUES(?,?,?,?,?)`,
+                  [uniqueId, username, date, newActiveTime, location],
+                  (err) => {
+                      if (err) {
+                          console.error("Error inserting into database:", err);
+                      } else {
+                          console.log(
+                              `${timestamp} - "${uniqueId}" (${username}) active for ${newActiveTime} at ${location} on ${date}`
+                          );
+                      }
+                  }
               );
-            }
           }
-        );
       }
-    }
   );
 }
 
-// Start logging status immediately and every minute after that
 logStatus();
 setInterval(logStatus, 60000);
