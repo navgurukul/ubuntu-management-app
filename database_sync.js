@@ -3,7 +3,7 @@ const axios = require('axios');
 
 // Extract data from the SQLite .db file and send it to the server
 function syncDatabase() {
-  const db = new sqlite3.Database('./system_tracking.db', sqlite3.OPEN_READONLY, (err) => {
+  const db = new sqlite3.Database('./sama_system_tracking.db', sqlite3.OPEN_READONLY, (err) => {
     if (err) {
       return console.error('Error opening database:', err.message);
     }

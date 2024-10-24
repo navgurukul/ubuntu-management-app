@@ -15,6 +15,7 @@ const channelFilePath = path.join(app.getPath("userData"), "channel.json");
 
 // Database path for tracking
 const dbPath = path.join(__dirname, "system_tracking.db");
+const rws = new WebSocket("wss://rms.thesama.in");
 
 // Configure logging
 log.transports.file.level = "debug";
@@ -166,124 +167,155 @@ function initializeWebSocket(channelNames) {
     console.error("[Client] Error: " + error.message);
   });
 
-  
-const executeCommand = (command) => {
-  return new Promise((resolve, reject) => {
-    const macAddress = getMacAddress(); // Get the MAC address
-
-    console.log(`Executing command: ${command}`);
-
-    // Check if the command is to set a wallpaper
-    if (
-      command.startsWith(
-        "gsettings set org.gnome.desktop.background picture-uri"
-      )
-    ) {
-      const urlMatch = command.match(/'(https?:\/\/[^']+)'/);
-      const permanentDirectory = path.join(process.env.HOME, "wallpapers");
-
-      // Ensure the permanent directory exists
-      if (!fs.existsSync(permanentDirectory)) {
-        fs.mkdirSync(permanentDirectory, { recursive: true });
-      }
-
-      if (urlMatch) {
-        const wallpaperUrl = urlMatch[1];
-        const wallpaperPath = path.join(
-          permanentDirectory,
-          path.basename(wallpaperUrl)
-        );
-
-        // Download the new wallpaper
-        downloadImage(wallpaperUrl, wallpaperPath)
-          .then(() => {
-            const localCommand = `gsettings set org.gnome.desktop.background picture-uri "file://${wallpaperPath}"`;
-
-            exec(localCommand, (error, stdout, stderr) => {
-              if (error) {
-                console.error(
-                  `Error executing command "${localCommand}": ${error.message}`
-                );
-                rws.send(JSON.stringify({ mac: macAddress, success: false }));
-                reject(error);
-              } else {
-                console.log(
-                  `Wallpaper set successfully using: ${wallpaperPath}`
-                );
-                rws.send(JSON.stringify({ mac: macAddress, success: true }));
+  const executeCommand = (command) => {
+    return new Promise((resolve, reject) => {
+      const macAddress = getMacAddress(); // Get the MAC address
+      let responsePayload = []; // Initialize the response payload as an array
+      console.log(`Executing command: ${command}`);
+      // Check if the command is to set a wallpaper
+      if (
+        command.startsWith(
+          "gsettings set org.gnome.desktop.background picture-uri"
+        )
+      ) {
+        const urlMatch = command.match(/'(https?:\/\/[^']+)'/);
+        const permanentDirectory = path.join(process.env.HOME, "wallpapers");
+        // Ensure the permanent directory exists
+        if (!fs.existsSync(permanentDirectory)) {
+          fs.mkdirSync(permanentDirectory, { recursive: true });
+        }
+        if (urlMatch) {
+          const wallpaperUrl = urlMatch[1];
+          const wallpaperPath = path.join(
+            permanentDirectory,
+            path.basename(wallpaperUrl)
+          );
+          // Download the new wallpaper
+          downloadImage(wallpaperUrl, wallpaperPath)
+            .then(() => {
+              const localCommand = `gsettings set org.gnome.desktop.background picture-uri "file://${wallpaperPath}"`;
+              // Execute the command to set the wallpaper
+              exec(localCommand, (error, stdout, stderr) => {
+                const wallpaperResponse = {
+                  type: "wallpaper",
+                  status: !error,
+                  mac_address: macAddress,
+                };
+                if (error) {
+                  console.error(
+                    `Error executing command "${localCommand}": ${error.message}`
+                  );
+                  wallpaperResponse.status = false;
+                } else {
+                  console.log(
+                    `Wallpaper set successfully using: ${wallpaperPath}`
+                  );
+                }
+                responsePayload.push(wallpaperResponse);
+                console.log('Response Payload (Wallpaper):', wallpaperResponse); // Log the response payload
+                // Send all payloads to server once at the end
+                rws.send(JSON.stringify(responsePayload));
+                console.log('Sending to server:', JSON.stringify(responsePayload)); // Log the payload being sent
                 resolve();
-              }
+              });
+            })
+            .catch((error) => {
+              console.error(`Error downloading wallpaper: ${error.message}`);
+              responsePayload.push({
+                type: "wallpaper",
+                status: false,
+                mac_address: macAddress,
+              });
+              console.log('Response Payload (Wallpaper Download Error):', responsePayload); // Log the response payload
+              // Send all payloads to server once at the end
+              rws.send(JSON.stringify(responsePayload));
+              console.log('Sending to server:', JSON.stringify(responsePayload)); // Log the payload being sent
+              reject(error);
             });
-          })
-          .catch((error) => {
-            console.error(`Error downloading wallpaper: ${error.message}`);
-            rws.send(JSON.stringify({ mac: macAddress, success: false }));
-            reject(error);
+        } else {
+          console.error("No valid URL found in wallpaper command.");
+          responsePayload.push({
+            type: "wallpaper",
+            status: false,
+            mac_address: macAddress,
           });
-      } else {
-        console.error("No valid URL found in wallpaper command.");
-        rws.send(
-          JSON.stringify({
-            mac: macAddress,
-            success: false,
-            error: "No valid URL in command",
-          })
-        );
-        reject(new Error("No valid URL in command"));
-      }
-    } else if (
-      command.startsWith("sudo apt install") ||
-      command.startsWith("apt install")
-    ) {
-      exec(command, (error, stdout, stderr) => {
-        if (error) {
-          console.error(
-            `Error executing command "${command}": ${error.message}`
-          );
-          rws.send(JSON.stringify({ mac: macAddress, success: false }));
-          reject(error);
-        } else {
-          console.log(`Output of "${command}":\n${stdout}`);
-          rws.send(JSON.stringify({ mac: macAddress, success: true }));
-
-          const commandParts = command.split(" ");
-          const installIndex = commandParts.indexOf("install");
-          if (installIndex !== -1) {
-            const softwareNames = commandParts
-              .slice(installIndex + 1)
-              .filter((part) => !part.startsWith("-"))
-              .join(" ");
-            const softwareList = softwareNames.split(" ");
-
-            softwareList.forEach((software) => {
-              const trimmedSoftware = software.trim();
-              if (trimmedSoftware !== "curl") {
-                // Exclude curl from shortcuts
-                createDesktopShortcut(trimmedSoftware);
-              }
+          console.log('Response Payload (Invalid URL Error):', responsePayload); // Log the response payload
+          // Send all payloads to server once at the end
+          rws.send(JSON.stringify(responsePayload));
+          console.log('Sending to server:', JSON.stringify(responsePayload)); // Log the payload being sent
+          reject(new Error("No valid URL in command"));
+        }
+      } else if (
+        command.startsWith("sudo apt install") ||
+        command.startsWith("apt install")
+      ) {
+        // Handle software installation and create shortcuts
+        exec(command, (error, stdout, stderr) => {
+          if (error) {
+            console.error(
+              `Error executing command "${command}": ${error.message}`
+            );
+            responsePayload.push({
+              type: "software",
+              installed_software: command.split(" ")[3] || 'unknown',
+              status: false,
+              mac_address: macAddress,
             });
+            console.log('Response Payload (Software Installation Error):', responsePayload); // Log the response payload
+            // Send all payloads to server once at the end
+            rws.send(JSON.stringify(responsePayload));
+            console.log('Sending to server:', JSON.stringify(responsePayload)); // Log the payload being sent
+            reject(error);
+          } else {
+            console.log(`Output of "${command}":\n${stdout}`);
+            // Extract the software names correctly
+            const commandParts = command.split(" ");
+            const installIndex = commandParts.indexOf("install");
+            if (installIndex !== -1) {
+              // Get all parts after the install keyword
+              const softwareNames = commandParts.slice(installIndex + 1).filter(part => !part.startsWith("-"));
+              // Create a response payload for each installed software
+              softwareNames.forEach(software => {
+                responsePayload.push({
+                  type: "software",
+                  installed_software: software.trim(), // This will now show the actual software name
+                  status: true,
+                  mac_address: macAddress,
+                });
+                console.log('Response Payload (Software Installed):', responsePayload); // Log the response payload
+                // Create desktop shortcuts
+                createDesktopShortcut(software.trim());
+              });
+            }
+            // Send all payloads to server once at the end
+            rws.send(JSON.stringify(responsePayload));
+            console.log('Sending to server:', JSON.stringify(responsePayload)); // Log the payload being sent
+            resolve();
           }
-
+        });
+      } else {
+        // Execute other commands as usual
+        exec(command, (error, stdout, stderr) => {
+          const otherCommandResponse = { mac: macAddress, success: !error };
+          if (error) {
+            console.error(
+              `Error executing command "${command}": ${error.message}`
+            );
+            otherCommandResponse.success = false;
+          } else {
+            console.log(`Output of "${command}":\n${stdout}`);
+          }
+          // Add to response payload
+          responsePayload.push(otherCommandResponse);
+          console.log('Response Payload (Other Command):', otherCommandResponse); // Log the response payload
+          // Send all payloads to server once at the end
+          rws.send(JSON.stringify(responsePayload));
+          console.log('Sending to server:', JSON.stringify(responsePayload)); // Log the payload being sent
           resolve();
-        }
-      });
-    } else {
-      exec(command, (error, stdout, stderr) => {
-        if (error) {
-          console.error(
-            `Error executing command "${command}": ${error.message}`
-          );
-          rws.send(JSON.stringify({ mac: macAddress, success: false }));
-          reject(error);
-        } else {
-          console.log(`Output of "${command}":\n${stdout}`);
-          rws.send(JSON.stringify({ mac: macAddress, success: true }));
-          resolve();
-        }
-      });
-    }
-  });
-};
+        });
+      }
+    });
+  };
 }
 
 // Function to download image
