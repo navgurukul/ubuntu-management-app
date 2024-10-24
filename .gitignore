@@ -11,3 +11,4 @@ out
 .env
 .env.test
 system_tracking.db
+channel.json
