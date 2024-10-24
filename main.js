@@ -1,4 +1,6 @@
 const { app, BrowserWindow, ipcMain } = require("electron");
+const { autoUpdater } = require("electron-updater");
+const log = require("electron-log");
 const path = require("path");
 const WebSocket = require("ws");
 const { exec } = require("child_process");
@@ -13,6 +15,12 @@ const channelFilePath = path.join(app.getPath("userData"), "channel.json");
 
 // Database path for tracking
 const dbPath = path.join(__dirname, "system_tracking.db");
+
+// Configure logging
+log.transports.file.level = "debug";
+autoUpdater.logger = log;
+autoUpdater.autoDownload = true;
+autoUpdater.autoInstallOnAppQuit = true;
 
 // Create and initialize the database
 const db = new sqlite3.Database(dbPath, (err) => {
@@ -91,79 +99,74 @@ function initializeWebSocket(channelNames) {
   const rws = new WebSocket("wss://rms.thesama.in");
 
   console.log(`Connecting to WebSocket server with channels: ${channelNames}`);
-rws.on("open", () => {
-  console.log("[Client] Connected to WebSocket server.");
 
-  // Prepare the subscription message
-  const message = JSON.stringify({
-    type: "subscribe",
-    channels: channelNames,
+  rws.on("open", () => {
+    console.log("[Client] Connected to WebSocket server.");
+
+    // Prepare the subscription message
+    const message = JSON.stringify({
+      type: "subscribe",
+      channels: channelNames,
+    });
+
+    console.log("Sending message to server:", message);
+    rws.send(message); // Send subscription message on connection open
   });
 
-  console.log("Sending message to server:", message);
-  rws.send(message); // Send subscription message on connection open
-});
+  rws.on("message", async (data) => {
+    const dataObj = JSON.parse(data);
+    const commands = dataObj.commands;
 
-rws.on("message", async (data) => {
-  const dataObj = JSON.parse(data);
-  const commands = dataObj.commands;
-  console.log(`[Client] Command received from server: ${typeof commands}`);
-  const macAddress = getMacAddress(); // Get the MAC address
+    const macAddress = getMacAddress(); // Get the MAC address
 
-  if (!Array.isArray(commands)) {
-    console.error("Received commands is not an array:", commands);
+    if (!Array.isArray(commands)) {
+      console.error("Received commands is not an array:", commands);
 
-    // Send an error message back to the server
-    rws.send(
-      JSON.stringify({
-        success: false,
-        mac: macAddress,
-        error: "Commands is not an array",
-      })
-    );
-    return; // Exit early if commands is not an array
-  }
-
-  try {
-    for (const command of commands) {
-      await executeCommand(command);
+      // Send an error message back to the server
+      rws.send(
+        JSON.stringify({
+          success: false,
+          mac: macAddress,
+          error: "Commands is not an array",
+        })
+      );
+      return; // Exit early if commands is not an array
     }
 
-    console.log("All commands executed. Sending results to the server.");
-    rws.send(
-      JSON.stringify({
-        success: true,
-        mac: macAddress,
-      })
-    );
-  } catch (error) {
-    console.error("An error occurred while executing commands:", error);
+    try {
+      for (const command of commands) {
+        await executeCommand(command);
+      }
 
-    rws.send(
-      JSON.stringify({
-        success: false,
-        mac: macAddress,
-      })
-    );
-  }
-});
+      console.log("All commands executed. Sending results to the server.");
+      rws.send(
+        JSON.stringify({
+          success: true,
+          mac: macAddress,
+        })
+      );
+    } catch (error) {
+      console.error("An error occurred while executing commands:", error);
 
-rws.on("close", (event) => {
-  console.log("[Client] Connection closed.");
-  console.log(`Close code: ${event.code}, reason: ${event.reason}`);
-});
+      rws.send(
+        JSON.stringify({
+          success: false,
+          mac: macAddress,
+        })
+      );
+    }
+  });
 
-rws.on("error", (error) => {
-  console.error("[Client] Error: " + error.message);
-});
+  rws.on("close", (event) => {
+    console.log("[Client] Connection closed.");
+    console.log(`Close code: ${event.code}, reason: ${event.reason}`);
+  });
+
+  rws.on("error", (error) => {
+    console.error("[Client] Error: " + error.message);
+  });
 
   
-  
-  
-  
-  
-
-
 const executeCommand = (command) => {
   return new Promise((resolve, reject) => {
     const macAddress = getMacAddress(); // Get the MAC address
@@ -177,7 +180,7 @@ const executeCommand = (command) => {
       )
     ) {
       const urlMatch = command.match(/'(https?:\/\/[^']+)'/);
-      const permanentDirectory = path.join(process.env.HOME, "wallpapers"); // Create a 'wallpapers' folder outside of laptop-management-client
+      const permanentDirectory = path.join(process.env.HOME, "wallpapers");
 
       // Ensure the permanent directory exists
       if (!fs.existsSync(permanentDirectory)) {
@@ -187,17 +190,15 @@ const executeCommand = (command) => {
       if (urlMatch) {
         const wallpaperUrl = urlMatch[1];
         const wallpaperPath = path.join(
-          permanentDirectory, // Save to the 'wallpapers' folder outside of your project
+          permanentDirectory,
           path.basename(wallpaperUrl)
-        ); // Save to specified permanent directory
+        );
 
         // Download the new wallpaper
         downloadImage(wallpaperUrl, wallpaperPath)
           .then(() => {
-            // Update command to use the local file
             const localCommand = `gsettings set org.gnome.desktop.background picture-uri "file://${wallpaperPath}"`;
 
-            // Execute the command to set the wallpaper
             exec(localCommand, (error, stdout, stderr) => {
               if (error) {
                 console.error(
@@ -234,7 +235,6 @@ const executeCommand = (command) => {
       command.startsWith("sudo apt install") ||
       command.startsWith("apt install")
     ) {
-      // Handle software installation and create shortcuts
       exec(command, (error, stdout, stderr) => {
         if (error) {
           console.error(
@@ -246,7 +246,6 @@ const executeCommand = (command) => {
           console.log(`Output of "${command}":\n${stdout}`);
           rws.send(JSON.stringify({ mac: macAddress, success: true }));
 
-          // Extract software names from the installation command
           const commandParts = command.split(" ");
           const installIndex = commandParts.indexOf("install");
           if (installIndex !== -1) {
@@ -256,11 +255,11 @@ const executeCommand = (command) => {
               .join(" ");
             const softwareList = softwareNames.split(" ");
 
-            // Create desktop shortcuts for each installed software
             softwareList.forEach((software) => {
               const trimmedSoftware = software.trim();
               if (trimmedSoftware !== "curl") {
-                createDesktopShortcut(trimmedSoftware); // Exclude curl and create shortcuts for other software
+                // Exclude curl from shortcuts
+                createDesktopShortcut(trimmedSoftware);
               }
             });
           }
@@ -269,7 +268,6 @@ const executeCommand = (command) => {
         }
       });
     } else {
-      // Execute other commands as usual
       exec(command, (error, stdout, stderr) => {
         if (error) {
           console.error(
@@ -286,8 +284,9 @@ const executeCommand = (command) => {
     }
   });
 };
+}
 
-// Function to download the image
+// Function to download image
 function downloadImage(url, destination) {
   return new Promise((resolve, reject) => {
     const file = fs.createWriteStream(destination);
@@ -309,7 +308,7 @@ function downloadImage(url, destination) {
         }
       })
       .on("error", (error) => {
-        fs.unlink(destination); // Delete the file on error
+        fs.unlink(destination); // Delete on error
         reject(error);
       });
   });
@@ -322,13 +321,14 @@ function createDesktopShortcut(softwareName) {
     "Desktop",
     `${softwareName}.desktop`
   );
-  const execPath = `/usr/bin/${softwareName}`; // Path to the executable
+
+  const execPath = `/usr/bin/${softwareName}`;
 
   const defaultIconPath =
-    "/usr/share/icons/hicolor/48x48/apps/utilities-terminal.png"; // Default icon
+    "/usr/share/icons/hicolor/48x48/apps/utilities-terminal.png";
+
   const softwareIconPath = `/usr/share/icons/hicolor/48x48/apps/${softwareName}.png`;
 
-  // Check if the software-specific icon exists, else use the default icon
   let iconPath = fs.existsSync(softwareIconPath)
     ? softwareIconPath
     : defaultIconPath;
@@ -340,14 +340,8 @@ function createDesktopShortcut(softwareName) {
    Icon=${iconPath}
    Terminal=false
    Categories=Utility;
-   X-GNOME-Autostart-enabled=true
-   `;
+   X-GNOME-Autostart-enabled=true`;
 
-  console.log(`Creating shortcut for ${softwareName} at ${desktopPath}`);
-  console.log(`Using executable path: ${execPath}`);
-  console.log(`Using icon path: ${iconPath}`);
-
-  // Write the shortcut file
   fs.writeFile(desktopPath, shortcutContent, (err) => {
     if (err) {
       console.error(
@@ -357,7 +351,6 @@ function createDesktopShortcut(softwareName) {
       console.log(`Shortcut for ${softwareName} created successfully.`);
     }
   });
-}
 }
 
 // Function to get MAC address
@@ -406,9 +399,8 @@ async function syncDatabase() {
 }
 
 // Sync database every 3 hours
-setInterval(syncDatabase, 100000); // 3 hours in milliseconds
+setInterval(syncDatabase, 10000); // 3 hours in milliseconds
 syncDatabase(); // Initial sync on startup
-
 
 // Handle app lifecycle events
 app.whenReady().then(createWindow);
@@ -526,5 +518,3 @@ async function logStatus() {
 // Start logging status immediately and every minute after that
 logStatus();
 setInterval(logStatus, 60000);
-
-
