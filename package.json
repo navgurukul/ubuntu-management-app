@@ -41,7 +41,8 @@
               "owner": "navgurukul",
               "name": "ubuntu-management-app"
             }
-          }
+          },
+          "releaseType": "release"
         }
       ]
     }
