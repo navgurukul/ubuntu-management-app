@@ -496,7 +496,6 @@ function resetChannel() {
 }
 
 resetChannel()
-// Handle IPC from renderer process for resetting channel
 ipcMain.on("reset-channel", () => {
   resetChannel();
 });
