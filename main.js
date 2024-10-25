@@ -23,6 +23,20 @@ autoUpdater.logger = log;
 autoUpdater.autoDownload = true;
 autoUpdater.autoInstallOnAppQuit = true;
 
+
+
+// Show a dialog when an update is available
+autoUpdater.on('update_available', () => {
+  log.info('Update available.');
+});
+
+// Download and install the update
+autoUpdater.on('update_downloaded', () => {
+  log.info('Update downloaded. Installing...');
+  autoUpdater.quitAndInstall();
+});
+
+
 // Create and initialize the database
 const db = new sqlite3.Database(dbPath, (err) => {
   if (err) {
@@ -96,6 +110,8 @@ function createWindow() {
     console.log(`Loaded Channel Names: ${channelNames.join(", ")}`);
     initializeWebSocket(channelNames);
   }
+
+  autoUpdater.checkForUpdatesAndNotify();
 }
 
 // Function to reset the channel (delete channel.json) and restart the app
