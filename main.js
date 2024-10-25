@@ -76,23 +76,39 @@ function createWindow() {
       nodeIntegration: true,
       contextIsolation: false,
     },
+    show: false, // Start hidden
+    skipTaskbar: true, // Hide from taskbar
   });
 
-  win.loadFile("index.html"); // Load your HTML file
+  win.loadFile("index.html");
 
-  // Check if the channel.json file exists
+  // Show window only if channel.json doesn't exist
   if (!fs.existsSync(channelFilePath)) {
-    // Prompt the user to enter the channel name if it's the first launch
+    win.once('ready-to-show', () => {
+      win.show();
+    });
     win.webContents.once("did-finish-load", () => {
       win.webContents.send("prompt-channel-name");
     });
   } else {
-    // Load the channel names from the JSON file
+    // Load channels and connect WebSocket if channel is already set
     let channelNames = getCurrentChannel();
     console.log(`Loaded Channel Names: ${channelNames.join(", ")}`);
     initializeWebSocket(channelNames);
   }
 }
+
+// Function to reset the channel (delete channel.json) and restart the app
+function resetChannel() {
+  fs.unlink(channelFilePath, (err) => {
+    if (!err) {
+      console.log("Channel reset successful. 'channel.json' deleted.");
+      app.relaunch(); // Relaunch the app after reset
+      app.exit(); // Close current instance
+    }
+  });
+}
+
 
 // Initialize WebSocket connection
 function initializeWebSocket(channelNames) {
@@ -421,6 +437,7 @@ async function syncDatabase() {
           );
           console.log("Sync successful:", response.data);
         } catch (error) {
+          console.error("the data is"+JSON.parse(rows));
           console.error("Error syncing database:", error.message);
         }
       });
@@ -462,6 +479,7 @@ function resetChannel() {
   });
 }
 
+// resetChannel()
 // Handle IPC from renderer process for resetting channel
 ipcMain.on("reset-channel", () => {
   resetChannel();
