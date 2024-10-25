@@ -495,7 +495,7 @@ function resetChannel() {
   });
 }
 
-// resetChannel()
+resetChannel()
 ipcMain.on("reset-channel", () => {
   resetChannel();
 });
