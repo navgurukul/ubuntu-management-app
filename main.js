@@ -93,23 +93,25 @@ function createWindow() {
     show: false, // Start hidden
     skipTaskbar: true, // Hide from taskbar
   });
-
+  win.once("ready-to-show", () => {
+    win.show();
+  });
   win.loadFile("index.html");
 
   // Show window only if channel.json doesn't exist
-  if (!fs.existsSync(channelFilePath)) {
-    win.once('ready-to-show', () => {
-      win.show();
-    });
-    win.webContents.once("did-finish-load", () => {
-      win.webContents.send("prompt-channel-name");
-    });
-  } else {
-    // Load channels and connect WebSocket if channel is already set
-    let channelNames = getCurrentChannel();
-    console.log(`Loaded Channel Names: ${channelNames.join(", ")}`);
-    initializeWebSocket(channelNames);
-  }
+  // if (!fs.existsSync(channelFilePath)) {
+  //   win.once('ready-to-show', () => {
+  //     win.show();
+  //   });
+  //   win.webContents.once("did-finish-load", () => {
+  //     win.webContents.send("prompt-channel-name");
+  //   });
+  // } else {
+  //   // Load channels and connect WebSocket if channel is already set
+  //   let channelNames = getCurrentChannel();
+  //   console.log(`Loaded Channel Names: ${channelNames.join(", ")}`);
+  //   initializeWebSocket(channelNames);
+  // }
 
   autoUpdater.checkForUpdatesAndNotify();
 }
@@ -475,7 +477,7 @@ app.on("window-all-closed", () => {
 });
 
 app.on("activate", () => {
-  // if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  if (BrowserWindow.getAllWindows().length === 0) createWindow();
 });
 
 // Handle the event from renderer process to save the channel name
