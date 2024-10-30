@@ -98,7 +98,7 @@ function createWindow() {
   });
   win.loadFile("index.html");
 
-  Show window only if channel.json doesn't exist
+  // Show window only if channel.json doesn't exist
   if (!fs.existsSync(channelFilePath)) {
     win.once('ready-to-show', () => {
       win.show();
