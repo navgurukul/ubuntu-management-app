@@ -1,15 +1,15 @@
 {
   "name": "new-electron-app",
-  "version": "1.0.1",
+  "version": "1.0.0",
   "main": "main.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "electron .",
     "package": "electron-forge package",
     "make": "electron-forge make",
-    "publish": "electron-forge publish",
-    "build": "electron-forge package",
-     "deploy": "electron-forge publish"
+    "build": "electron-builder build --linux",
+    "deploy": "electron-builder build --linux --publish always",
+    "publish": "electron-builder build --linux --publish always"
   },
   "config": {
     "forge": {
@@ -59,7 +59,7 @@
     "electron-squirrel-startup": "^1.0.1",
     "electron-updater": "^6.3.9",
     "express": "^4.20.0",
-    "html5-websocket": "^2.0.4",
+    "html5-websocket": "^1.0.0",
     "openai": "^4.60.0",
     "reconnecting-websocket": "^4.4.0",
     "shelljs": "^0.8.5",
@@ -75,6 +75,7 @@
     "@electron-forge/plugin-fuses": "^7.5.0",
     "@electron-forge/publisher-github": "^7.5.0",
     "@electron/fuses": "^1.8.0",
-    "electron": "^33.0.0"
+    "electron": "^22.0.0",
+    "electron-builder": "^24.13.3"
   }
 }
