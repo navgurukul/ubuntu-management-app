@@ -76,6 +76,6 @@
     "@electron-forge/publisher-github": "^7.5.0",
     "@electron/fuses": "^1.8.0",
     "electron": "^22.0.0",
-    "electron-builder": "^24.13.3"
+    "electron-builder": "^25.1.8"
   }
 }
