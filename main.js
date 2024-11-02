@@ -14,7 +14,8 @@ const axios = require("axios");
 const channelFilePath = path.join(app.getPath("userData"), "channel.json");
 
 // Database path for tracking
-const dbPath = path.join(__dirname, "system_tracking.db");
+
+const dbPath = path.join(app.getPath("userData"), "system_tracking.db");
 const rws = new WebSocket("wss://rms.thesama.in");
 
 // Configure logging
@@ -23,7 +24,10 @@ autoUpdater.logger = log;
 autoUpdater.autoDownload = true;
 autoUpdater.autoInstallOnAppQuit = true;
 
-
+// Disable sandbox at runtime
+app.commandLine.appendSwitch('no-sandbox');
+// Disable GPU acceleration if you experience issues
+app.commandLine.appendSwitch('disable-gpu');
 
 // Show a dialog when an update is available
 autoUpdater.on('update_available', () => {
@@ -89,6 +93,7 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
+      sandbox: false, 
     },
     show: false, // Start hidden
     skipTaskbar: true, // Hide from taskbar
