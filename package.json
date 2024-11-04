@@ -32,7 +32,10 @@
       "target": "deb",
       "maintainer": "Shivansh",
       "category": "Utility",
-      "icon": "build/icon.png"
+      "icon": "build/icon.png",
+      "executableArgs": [
+        "--no-sandbox"
+      ]
     },
     "deb": {
       "priority": "optional",
