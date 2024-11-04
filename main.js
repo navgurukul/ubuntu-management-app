@@ -8,7 +8,8 @@ const {
   CHANNEL_FILE_PATH,
   SYNC_INTERVAL,
   LOG_INTERVAL,
-} = require("./config/constants");
+} = require("./config/constants"); 
+
 const { initializeDatabase } = require("./database/init");
 const ActivityLogger = require("./services/activityLogger");
 const ChannelManager = require("./services/channelManager");
@@ -88,6 +89,7 @@ function createWindow() {
     // Initialize WebSocket handler
     wsHandler = new WebSocketHandler();
     wsHandler.initialize(channelNames);
+    win.show();
   }
 
   // Add periodic connection status check
