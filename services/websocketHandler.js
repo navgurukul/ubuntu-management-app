@@ -1,4 +1,3 @@
-// services/websocketHandler.js
 const WebSocket = require("ws");
 const { exec } = require("child_process");
 const path = require("path");
@@ -14,9 +13,9 @@ class WebSocketHandler {
     this.channelNames = [];
     this.isConnected = false;
     this.reconnectAttempts = 0;
-    this.maxReconnectAttempts = 1000; // Set high for persistent reconnection
-    this.baseReconnectDelay = 5000; // Start with 5 seconds
-    this.maxReconnectDelay = 300000; // Max 5 minutes
+    this.maxReconnectAttempts = 1000;
+    this.baseReconnectDelay = 5000;
+    this.maxReconnectDelay = 300000;
     this.pingInterval = null;
     this.pongTimeout = null;
   }
@@ -51,7 +50,6 @@ class WebSocketHandler {
     this.isConnected = true;
     this.reconnectAttempts = 0;
 
-    // Send subscription message
     const message = JSON.stringify({
       type: "subscribe",
       channels: this.channelNames,
@@ -59,7 +57,6 @@ class WebSocketHandler {
     console.log("Sending subscription message:", message);
     this.ws.send(message);
 
-    // Setup ping-pong for connection monitoring
     this.setupPingPong();
   }
 
@@ -120,7 +117,6 @@ class WebSocketHandler {
       return;
     }
 
-    // Exponential backoff with jitter
     const delay = Math.min(
       this.baseReconnectDelay *
         Math.pow(1.5, this.reconnectAttempts) *
@@ -143,7 +139,6 @@ class WebSocketHandler {
   }
 
   setupInternetConnectionMonitoring() {
-    // Check internet connectivity every 30 seconds
     setInterval(() => {
       this.checkInternetConnection();
     }, 30000);
@@ -170,25 +165,21 @@ class WebSocketHandler {
   }
 
   setupPingPong() {
-    // Clear any existing intervals
     this.clearPingPong();
 
-    // Send ping every 30 seconds
     this.pingInterval = setInterval(() => {
       if (this.ws.readyState === WebSocket.OPEN) {
         this.ws.ping();
 
-        // Set pong timeout
         this.pongTimeout = setTimeout(() => {
           console.log("Pong timeout - connection appears to be dead");
           this.ws.terminate();
-        }, 5000); // Wait 5 seconds for pong before terminating
+        }, 5000);
       }
     }, 30000);
   }
 
   handlePong() {
-    // Clear pong timeout since we received the response
     if (this.pongTimeout) {
       clearTimeout(this.pongTimeout);
       this.pongTimeout = null;
@@ -214,9 +205,227 @@ class WebSocketHandler {
     }
   }
 
+  async downloadImage(url, filepath) {
+    return new Promise((resolve, reject) => {
+      https
+        .get(url, (response) => {
+          if (response.statusCode !== 200) {
+            reject(
+              new Error(`Failed to download image: ${response.statusCode}`)
+            );
+            return;
+          }
+
+          const fileStream = fs.createWriteStream(filepath);
+          response.pipe(fileStream);
+
+          fileStream.on("finish", () => {
+            fileStream.close();
+            resolve();
+          });
+
+          fileStream.on("error", (err) => {
+            fs.unlink(filepath, () => {});
+            reject(err);
+          });
+        })
+        .on("error", (err) => {
+          fs.unlink(filepath, () => {});
+          reject(err);
+        });
+    });
+  }
+
+  async createDesktopShortcut(softwareName) {
+    try {
+      const desktopPath = path.join(
+        os.homedir(),
+        "Desktop",
+        `${softwareName}.desktop`
+      );
+
+      const execPath = `/usr/bin/${softwareName}`;
+
+      const defaultIconPath =
+        "/usr/share/icons/hicolor/48x48/apps/utilities-terminal.png";
+
+      const softwareIconPath = `/usr/share/icons/hicolor/48x48/apps/${softwareName}.png`;
+
+      let iconPath = fs.existsSync(softwareIconPath)
+        ? softwareIconPath
+        : defaultIconPath;
+
+      const shortcutContent = `[Desktop Entry]
+Type=Application
+Name=${softwareName}
+Exec=${execPath}
+Icon=${iconPath}
+Terminal=false
+Categories=Utility;
+X-GNOME-Autostart-enabled=true`;
+
+      await fs.promises.writeFile(desktopPath, shortcutContent);
+      console.log(`Shortcut for ${softwareName} created successfully.`);
+
+      // Make the shortcut executable
+      await fs.promises.chmod(desktopPath, "755");
+    } catch (err) {
+      console.error(`Error creating shortcut for ${softwareName}:`, err);
+      throw err;
+    }
+  }
+
   async executeCommand(command) {
-    // Your existing executeCommand implementation
-    // ... (keep the same implementation as before)
+    return new Promise((resolve, reject) => {
+      const macAddress = getMacAddress();
+      let responsePayload = [];
+      console.log(`Executing command: ${command}`);
+
+      if (
+        command.startsWith(
+          "gsettings set org.gnome.desktop.background picture-uri"
+        )
+      ) {
+        const urlMatch = command.match(/'(https?:\/\/[^']+)'/);
+        const permanentDirectory = path.join(process.env.HOME, "wallpapers");
+
+        if (!fs.existsSync(permanentDirectory)) {
+          fs.mkdirSync(permanentDirectory, { recursive: true });
+        }
+
+        if (urlMatch) {
+          const wallpaperUrl = urlMatch[1];
+          const wallpaperPath = path.join(
+            permanentDirectory,
+            path.basename(wallpaperUrl)
+          );
+
+          this.downloadImage(wallpaperUrl, wallpaperPath)
+            .then(() => {
+              const localCommand = `gsettings set org.gnome.desktop.background picture-uri "file://${wallpaperPath}"`;
+              exec(localCommand, (error, stdout, stderr) => {
+                const wallpaperResponse = {
+                  type: "wallpaper",
+                  status: !error,
+                  mac_address: macAddress,
+                };
+                if (error) {
+                  console.error(
+                    `Error executing command "${localCommand}": ${error.message}`
+                  );
+                  wallpaperResponse.status = false;
+                } else {
+                  console.log(
+                    `Wallpaper set successfully using: ${wallpaperPath}`
+                  );
+                }
+                responsePayload.push(wallpaperResponse);
+                this.sendResponse(responsePayload);
+                resolve();
+              });
+            })
+            .catch((error) => {
+              console.error(`Error downloading wallpaper: ${error.message}`);
+              responsePayload.push({
+                type: "wallpaper",
+                status: false,
+                mac_address: macAddress,
+              });
+              this.sendResponse(responsePayload);
+              reject(error);
+            });
+        } else {
+          console.error("No valid URL found in wallpaper command.");
+          responsePayload.push({
+            type: "wallpaper",
+            status: false,
+            mac_address: macAddress,
+          });
+          this.sendResponse(responsePayload);
+          reject(new Error("No valid URL in command"));
+        }
+      } else if (
+        command.startsWith("sudo apt install") ||
+        command.startsWith("apt install")
+      ) {
+        exec(command, (error, stdout, stderr) => {
+          if (error) {
+            console.error(
+              `Error executing command "${command}": ${error.message}`
+            );
+            responsePayload.push({
+              type: "software",
+              installed_software: command.split(" ")[3] || "unknown",
+              status: false,
+              mac_address: macAddress,
+            });
+            this.sendResponse(responsePayload);
+            reject(error);
+          } else {
+            console.log(`Output of "${command}":\n${stdout}`);
+            const commandParts = command.split(" ");
+            const installIndex = commandParts.indexOf("install");
+            if (installIndex !== -1) {
+              const softwareNames = commandParts
+                .slice(installIndex + 1)
+                .filter((part) => !part.startsWith("-"));
+
+              Promise.all(
+                softwareNames.map(async (software) => {
+                  const trimmedSoftware = software.trim();
+                  responsePayload.push({
+                    type: "software",
+                    installed_software: trimmedSoftware,
+                    status: true,
+                    mac_address: macAddress,
+                  });
+                  return this.createDesktopShortcut(trimmedSoftware);
+                })
+              )
+                .then(() => {
+                  this.sendResponse(responsePayload);
+                  resolve();
+                })
+                .catch((err) => {
+                  console.error("Error creating desktop shortcuts:", err);
+                  reject(err);
+                });
+            } else {
+              resolve();
+            }
+          }
+        });
+      } else {
+        exec(command, (error, stdout, stderr) => {
+          const otherCommandResponse = {
+            type: "command",
+            status: !error,
+            mac_address: macAddress,
+            command: command,
+            output: stdout,
+          };
+
+          if (error) {
+            console.error(
+              `Error executing command "${command}": ${error.message}`
+            );
+            otherCommandResponse.status = false;
+            otherCommandResponse.error = error.message;
+          } else {
+            console.log(`Output of "${command}":\n${stdout}`);
+          }
+
+          responsePayload.push(otherCommandResponse);
+          this.sendResponse(responsePayload);
+
+          if (error) {
+            reject(error);
+          } else {
+            resolve();
+          }
+        });
+      }
+    });
   }
 
   getConnectionStatus() {

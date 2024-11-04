@@ -8,7 +8,7 @@ const {
   CHANNEL_FILE_PATH,
   SYNC_INTERVAL,
   LOG_INTERVAL,
-} = require("./config/constants"); 
+} = require("./config/constants");
 
 const { initializeDatabase } = require("./database/init");
 const ActivityLogger = require("./services/activityLogger");
@@ -41,8 +41,16 @@ autoUpdater.on("update_downloaded", () => {
 });
 
 // App lifecycle events
-app.whenReady().then(createWindow);
-
+app.whenReady().then(() => {
+  if (fs.existsSync(CHANNEL_FILE_PATH)) {
+    console.log("Channel is already set. Establishing WebSocket connection.");
+    const channelNames = ChannelManager.getCurrentChannel();
+    wsHandler = new WebSocketHandler();
+    wsHandler.initialize(channelNames);
+  } else {
+    createWindow(); // Create window if no channel exists
+  }
+});
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
@@ -75,18 +83,21 @@ function createWindow() {
 
   win.loadFile("index.html");
 
-  if (!fs.existsSync(CHANNEL_FILE_PATH)) {
-    win.once("ready-to-show", () => {
-      win.show();
-    });
-    win.webContents.once("did-finish-load", () => {
-      win.webContents.send("prompt-channel-name");
-    });
-  } else {
-    const channelNames = ChannelManager.getCurrentChannel();
-    console.log(`Loaded Channel Names: ${channelNames.join(", ")}`);
+  win.once("ready-to-show", () => {
+    win.show();
+  });
 
-    // Initialize WebSocket handler
+  win.webContents.once("did-finish-load", () => {
+    win.webContents.send("prompt-channel-name");
+  });
+
+  // Initialize WebSocket handler only if channel exists
+  const channelNames = ChannelManager.getCurrentChannel();
+  if (channelNames.length > 0) {
+    console.log(
+      `Loaded Channel Names: ${channelNames.join(", ")}`,
+      channelNames
+    );
     wsHandler = new WebSocketHandler();
     wsHandler.initialize(channelNames);
     win.show();
@@ -118,3 +129,25 @@ ipcMain.on("reconnect-websocket", () => {
     wsHandler.connect();
   }
 });
+
+// Reset channel function
+function resetChannel() {
+  fs.unlink(CHANNEL_FILE_PATH, (err) => {
+    if (err) {
+      console.error("Error deleting channel.json:", err);
+    } else {
+      console.log("Channel reset successful. 'channel.json' deleted.");
+      // Notify the renderer process to prompt for a new channel name
+      BrowserWindow.getAllWindows().forEach((win) => {
+        win.webContents.send("prompt-channel-name");
+      });
+    }
+  });
+}
+
+// Add reset channel handler
+ipcMain.on("reset-channel", () => {
+  resetChannel();
+});
+
+// resetChannel()
