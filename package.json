@@ -1,6 +1,6 @@
 {
   "name": "ubuntu-management-app",
-  "version": "1.0.3",
+  "version": "1.0.7",
   "main": "main.js",
   "description": "Remote Ubuntu management app",
   "author": "Shivansh",
@@ -37,6 +37,11 @@
         "--no-sandbox"
       ]
     },
+    "files": [
+      "**/*",
+      "!**/channel.json",
+      "!**/config.json"
+    ],
     "deb": {
       "priority": "optional",
       "depends": []

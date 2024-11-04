@@ -6,43 +6,50 @@
     <title>Channel Input</title>
 </head>
 <body>
-    <h1>Welcome to the Electron App </h1>
-    <h1>This is the new update launched </h1>
-    <h1>version 1.0.0</h1>
-    <h1>testing</h1>
     <div id="channel-prompt" style="display:none;">
+        <h1>Welcome to the Electron App</h1>
         <p>Please enter your channel name:</p>
         <input type="text" id="channel-name" placeholder="Channel Name" />
         <button onclick="submitChannelName()">Submit</button>
-
-
     </div>
 
-    <button id="reset-channel-btn">Reset Channel</button>
+    <button id="reset-channel-btn" style="display:none;">Reset Channel</button>
+
     <script>
         const { ipcRenderer } = require("electron");
 
         // Show the prompt when main process sends "prompt-channel-name" event
         ipcRenderer.on("prompt-channel-name", () => {
             document.getElementById("channel-prompt").style.display = "block";
+            document.getElementById("reset-channel-btn").style.display = "none";
         });
 
-        // Function to submit the channel name and hide the input prompt
         function submitChannelName() {
             const channelName = document.getElementById("channel-name").value;
             if (channelName) {
                 ipcRenderer.send("save-channel-name", channelName);
-                document.getElementById("channel-prompt").style.display = "none";
+                // Don't hide elements here - window will be hidden by main process
             } else {
                 alert("Please enter a channel name.");
             }
         }
 
- document.getElementById('reset-channel-btn').addEventListener('click', () => {
-        ipcRenderer.send('reset-channel');
-        alert("Channel has been reset. Restart the app to enter a new channel.");
-      });
+        document.getElementById('reset-channel-btn').addEventListener('click', () => {
+            ipcRenderer.send('reset-channel');
+        });
 
+        // Initial state check
+        ipcRenderer.send("check-channel-file");
+        
+        ipcRenderer.on("channel-file-status", (event, exists) => {
+            if (exists) {
+                document.getElementById("channel-prompt").style.display = "none";
+                document.getElementById("reset-channel-btn").style.display = "block";
+            } else {
+                document.getElementById("channel-prompt").style.display = "block";
+                document.getElementById("reset-channel-btn").style.display = "none";
+            }
+        });
     </script>
 </body>
 </html>

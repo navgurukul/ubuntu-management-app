@@ -11,12 +11,93 @@ const sqlite3 = require("sqlite3").verbose();
 const axios = require("axios");
 
 // Path to the JSON file where channel name is stored
-const channelFilePath = path.join(app.getPath("userData"), "channel.json");
 
+const userDataPath = app.getPath("userData");
+const channelFilePath = path.join(userDataPath, "channel.json");
+const configFilePath = path.join(userDataPath, "config.json");
+
+const dns = require("dns");
+console.log("Starting the app===================...", channelFilePath);
+function isOnline() {
+  return new Promise((resolve) => {
+    dns.lookup("google.com", (err) => {
+      if (err && err.code === "ENOTFOUND") {
+        resolve(false);
+      } else {
+        resolve(true);
+      }
+    });
+  });
+}
+let rws;
+
+function ensureUserDataFiles() {
+  try {
+    // Create userData directory if it doesn't exist
+    if (!fs.existsSync(userDataPath)) {
+      fs.mkdirSync(userDataPath, { recursive: true });
+    }
+
+    // Ensure channel.json exists
+    if (!fs.existsSync(channelFilePath)) {
+      fs.writeFileSync(
+        channelFilePath,
+        JSON.stringify({ currentChannel: [] }, null, 2),
+        "utf8"
+      );
+      console.log("Created channel.json in userData directory");
+    }
+
+    // Ensure config.json exists
+    if (!fs.existsSync(configFilePath)) {
+      fs.writeFileSync(
+        configFilePath,
+        JSON.stringify({ channelSubmitted: false }, null, 2),
+        "utf8"
+      );
+      console.log("Created config.json in userData directory");
+    }
+  } catch (error) {
+    console.error("Error ensuring user data files:", error);
+  }
+}
+function checkNetworkAndReconnect(channelNames) {
+  setInterval(async () => {
+    if (await isOnline()) {
+      if (!rws || rws.readyState === WebSocket.CLOSED) {
+        console.log("Network is online. Reconnecting WebSocket...");
+        initializeWebSocket(channelNames);
+      }
+    } else {
+      console.log("Network is offline. Waiting to reconnect WebSocket...");
+    }
+  }, 5000); // Check every 5 seconds
+}
 // Database path for tracking
 
 const dbPath = path.join(app.getPath("userData"), "system_tracking.db");
-const rws = new WebSocket("wss://rms.thesama.in");
+
+
+function readConfig() {
+  try {
+    ensureUserDataFiles();
+    const data = fs.readFileSync(configFilePath, "utf8");
+    return JSON.parse(data);
+  } catch (error) {
+    console.error("Error reading config file:", error);
+    return { channelSubmitted: false };
+  }
+}
+
+function writeConfig(config) {
+  try {
+    ensureUserDataFiles();
+    fs.writeFileSync(configFilePath, JSON.stringify(config, null, 2), "utf8");
+    console.log("Config written successfully");
+  } catch (error) {
+    console.error("Error writing to config file:", error);
+  }
+}
 
 // Configure logging
 log.transports.file.level = "debug";
@@ -25,21 +106,20 @@ autoUpdater.autoDownload = true;
 autoUpdater.autoInstallOnAppQuit = true;
 
 // Disable sandbox at runtime
-app.commandLine.appendSwitch('no-sandbox');
+app.commandLine.appendSwitch("no-sandbox");
 // Disable GPU acceleration if you experience issues
-app.commandLine.appendSwitch('disable-gpu');
+app.commandLine.appendSwitch("disable-gpu");
 
 // Show a dialog when an update is available
-autoUpdater.on('update_available', () => {
-  log.info('Update available.');
+autoUpdater.on("update_available", () => {
+  log.info("Update available.");
 });
 
 // Download and install the update
-autoUpdater.on('update_downloaded', () => {
-  log.info('Update downloaded. Installing...');
+autoUpdater.on("update_downloaded", () => {
+  log.info("Update downloaded. Installing...");
   autoUpdater.quitAndInstall();
 });
-
 
 // Create and initialize the database
 const db = new sqlite3.Database(dbPath, (err) => {
@@ -66,9 +146,9 @@ db.serialize(() => {
   `);
 });
 
-// Function to read current channel from JSON file
 function getCurrentChannel() {
   try {
+    ensureUserDataFiles();
     const data = fs.readFileSync(channelFilePath, "utf8");
     const parsedData = JSON.parse(data);
     return parsedData.currentChannel || [];
@@ -78,65 +158,99 @@ function getCurrentChannel() {
   }
 }
 
+
+function ensureChannelFileExists() {
+  if (!fs.existsSync(channelFilePath)) {
+    fs.writeFileSync(
+      channelFilePath,
+      JSON.stringify({ currentChannel: [] }, null, 2),
+      "utf8"
+    );
+  }
+}
+
 // Function to save the channel name to JSON file
 function saveChannelName(channelName) {
-  const data = { currentChannel: [channelName] };
-  fs.writeFileSync(channelFilePath, JSON.stringify(data, null, 2), "utf8");
-  console.log(`Channel name saved: ${channelName}`);
+  try {
+    ensureUserDataFiles();
+    const data = { currentChannel: [channelName] };
+    fs.writeFileSync(channelFilePath, JSON.stringify(data, null, 2), "utf8");
+    console.log(`Channel name saved to userData: ${channelName}`);
+  } catch (error) {
+    console.error("Error saving channel name:", error);
+  }
 }
 
 // Create main window
+
+let mainWindow = null; // Store window reference globally
+
 function createWindow() {
-  const win = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     width: 800,
     height: 600,
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
-      sandbox: false, 
+      sandbox: false,
     },
-    show: false, // Start hidden
+    show: false, // Start hidden by default
     skipTaskbar: true, // Hide from taskbar
   });
-  win.once("ready-to-show", () => {
-    win.show();
-  });
-  win.loadFile("index.html");
 
-  // Show window only if channel.json doesn't exist
-  if (!fs.existsSync(channelFilePath)) {
-    win.once('ready-to-show', () => {
-      win.show();
-    });
-    win.webContents.once("did-finish-load", () => {
-      win.webContents.send("prompt-channel-name");
+  mainWindow.loadFile("index.html");
+
+  // Read config before deciding to show window
+  const config = readConfig();
+
+  if (!config.channelSubmitted) {
+    // Only show window if channel hasn't been submitted
+    mainWindow.once("ready-to-show", () => {
+      mainWindow.show();
+      mainWindow.webContents.send("prompt-channel-name");
     });
   } else {
-    // Load channels and connect WebSocket if channel is already set
-    let channelNames = getCurrentChannel();
+    // If channel is already submitted, initialize WebSocket without showing window
+    const channelNames = getCurrentChannel();
     console.log(`Loaded Channel Names: ${channelNames.join(", ")}`);
     initializeWebSocket(channelNames);
+    checkNetworkAndReconnect(channelNames);
   }
 
   autoUpdater.checkForUpdatesAndNotify();
 }
 
 // Function to reset the channel (delete channel.json) and restart the app
+// Function to reset the channel (clear channel.json)
+// Update the reset channel function
 function resetChannel() {
-  fs.unlink(channelFilePath, (err) => {
-    if (!err) {
-      console.log("Channel reset successful. 'channel.json' deleted.");
-      app.relaunch(); // Relaunch the app after reset
-      app.exit(); // Close current instance
+  try {
+    fs.writeFileSync(channelFilePath, JSON.stringify({ currentChannel: [] }, null, 2), "utf8");
+    console.log("Channel reset successful. 'channel.json' cleared.");
+
+    // Reset the config
+    const config = readConfig();
+    config.channelSubmitted = false;
+    writeConfig(config);
+
+    // Show the window before restarting
+    if (mainWindow) {
+      mainWindow.show();
     }
-  });
+
+    // Relaunch the app
+    app.relaunch();
+    app.exit();
+  } catch (error) {
+    console.error("Error resetting channel:", error);
+  }
 }
 
-
+// resetChannel()
 // Initialize WebSocket connection
 function initializeWebSocket(channelNames) {
   // WebSocket connection
-  const rws = new WebSocket("wss://rms.thesama.in");
+  rws = new WebSocket("wss://rms.thesama.in");
 
   console.log(`Connecting to WebSocket server with channels: ${channelNames}`);
 
@@ -152,48 +266,51 @@ function initializeWebSocket(channelNames) {
     console.log("Sending message to server:", message);
     rws.send(message); // Send subscription message on connection open
   });
-
   rws.on("message", async (data) => {
-    const dataObj = JSON.parse(data);
-    const commands = dataObj.commands;
-
-    const macAddress = getMacAddress(); // Get the MAC address
-
-    if (!Array.isArray(commands)) {
-      console.error("Received commands is not an array:", commands);
-
-      // Send an error message back to the server
-      rws.send(
-        JSON.stringify({
-          success: false,
-          mac: macAddress,
-          error: "Commands is not an array",
-        })
-      );
-      return; // Exit early if commands is not an array
-    }
-
     try {
-      for (const command of commands) {
-        await executeCommand(command);
+      const dataObj = JSON.parse(data);
+      const commands = dataObj.commands;
+
+      const macAddress = getMacAddress(); // Get the MAC address
+
+      if (!Array.isArray(commands)) {
+        console.error("Received commands is not an array:", commands);
+
+        // Send an error message back to the server
+        rws.send(
+          JSON.stringify({
+            success: false,
+            mac: macAddress,
+            error: "Commands is not an array",
+          })
+        );
+        return; // Exit early if commands is not an array
       }
 
-      console.log("All commands executed. Sending results to the server.");
-      rws.send(
-        JSON.stringify({
-          success: true,
-          mac: macAddress,
-        })
-      );
-    } catch (error) {
-      console.error("An error occurred while executing commands:", error);
+      try {
+        for (const command of commands) {
+          await executeCommand(command);
+        }
 
-      rws.send(
-        JSON.stringify({
-          success: false,
-          mac: macAddress,
-        })
-      );
+        console.log("All commands executed. Sending results to the server.");
+        rws.send(
+          JSON.stringify({
+            success: true,
+            mac: macAddress,
+          })
+        );
+      } catch (error) {
+        console.error("An error occurred while executing commands:", error);
+
+        rws.send(
+          JSON.stringify({
+            success: false,
+            mac: macAddress,
+          })
+        );
+      }
+    } catch (error) {
+      console.error("Error parsing JSON:", error.message);
     }
   });
 
@@ -251,10 +368,13 @@ function initializeWebSocket(channelNames) {
                   );
                 }
                 responsePayload.push(wallpaperResponse);
-                console.log('Response Payload (Wallpaper):', wallpaperResponse); // Log the response payload
+                console.log("Response Payload (Wallpaper):", wallpaperResponse); // Log the response payload
                 // Send all payloads to server once at the end
                 rws.send(JSON.stringify(responsePayload));
-                console.log('Sending to server:', JSON.stringify(responsePayload)); // Log the payload being sent
+                console.log(
+                  "Sending to server:",
+                  JSON.stringify(responsePayload)
+                ); // Log the payload being sent
                 resolve();
               });
             })
@@ -265,10 +385,16 @@ function initializeWebSocket(channelNames) {
                 status: false,
                 mac_address: macAddress,
               });
-              console.log('Response Payload (Wallpaper Download Error):', responsePayload); // Log the response payload
+              console.log(
+                "Response Payload (Wallpaper Download Error):",
+                responsePayload
+              ); // Log the response payload
               // Send all payloads to server once at the end
               rws.send(JSON.stringify(responsePayload));
-              console.log('Sending to server:', JSON.stringify(responsePayload)); // Log the payload being sent
+              console.log(
+                "Sending to server:",
+                JSON.stringify(responsePayload)
+              ); // Log the payload being sent
               reject(error);
             });
         } else {
@@ -278,10 +404,10 @@ function initializeWebSocket(channelNames) {
             status: false,
             mac_address: macAddress,
           });
-          console.log('Response Payload (Invalid URL Error):', responsePayload); // Log the response payload
+          console.log("Response Payload (Invalid URL Error):", responsePayload); // Log the response payload
           // Send all payloads to server once at the end
           rws.send(JSON.stringify(responsePayload));
-          console.log('Sending to server:', JSON.stringify(responsePayload)); // Log the payload being sent
+          console.log("Sending to server:", JSON.stringify(responsePayload)); // Log the payload being sent
           reject(new Error("No valid URL in command"));
         }
       } else if (
@@ -296,14 +422,17 @@ function initializeWebSocket(channelNames) {
             );
             responsePayload.push({
               type: "software",
-              installed_software: command.split(" ")[3] || 'unknown',
+              installed_software: command.split(" ")[3] || "unknown",
               status: false,
               mac_address: macAddress,
             });
-            console.log('Response Payload (Software Installation Error):', responsePayload); // Log the response payload
+            console.log(
+              "Response Payload (Software Installation Error):",
+              responsePayload
+            ); // Log the response payload
             // Send all payloads to server once at the end
             rws.send(JSON.stringify(responsePayload));
-            console.log('Sending to server:', JSON.stringify(responsePayload)); // Log the payload being sent
+            console.log("Sending to server:", JSON.stringify(responsePayload)); // Log the payload being sent
             reject(error);
           } else {
             console.log(`Output of "${command}":\n${stdout}`);
@@ -312,23 +441,28 @@ function initializeWebSocket(channelNames) {
             const installIndex = commandParts.indexOf("install");
             if (installIndex !== -1) {
               // Get all parts after the install keyword
-              const softwareNames = commandParts.slice(installIndex + 1).filter(part => !part.startsWith("-"));
+              const softwareNames = commandParts
+                .slice(installIndex + 1)
+                .filter((part) => !part.startsWith("-"));
               // Create a response payload for each installed software
-              softwareNames.forEach(software => {
+              softwareNames.forEach((software) => {
                 responsePayload.push({
                   type: "software",
                   installed_software: software.trim(), // This will now show the actual software name
                   status: true,
                   mac_address: macAddress,
                 });
-                console.log('Response Payload (Software Installed):', responsePayload); // Log the response payload
+                console.log(
+                  "Response Payload (Software Installed):",
+                  responsePayload
+                ); // Log the response payload
                 // Create desktop shortcuts
                 createDesktopShortcut(software.trim());
               });
             }
             // Send all payloads to server once at the end
             rws.send(JSON.stringify(responsePayload));
-            console.log('Sending to server:', JSON.stringify(responsePayload)); // Log the payload being sent
+            console.log("Sending to server:", JSON.stringify(responsePayload)); // Log the payload being sent
             resolve();
           }
         });
@@ -346,10 +480,13 @@ function initializeWebSocket(channelNames) {
           }
           // Add to response payload
           responsePayload.push(otherCommandResponse);
-          console.log('Response Payload (Other Command):', otherCommandResponse); // Log the response payload
+          console.log(
+            "Response Payload (Other Command):",
+            otherCommandResponse
+          ); // Log the response payload
           // Send all payloads to server once at the end
           rws.send(JSON.stringify(responsePayload));
-          console.log('Sending to server:', JSON.stringify(responsePayload)); // Log the payload being sent
+          console.log("Sending to server:", JSON.stringify(responsePayload)); // Log the payload being sent
           resolve();
         });
       }
@@ -443,80 +580,135 @@ function getMacAddress() {
 
 // Function to sync database with server
 async function syncDatabase() {
-  const dbInstance = new sqlite3.Database(
-    dbPath,
-    sqlite3.OPEN_READONLY,
-    (err) => {
-      if (err) return console.error("Error opening database:", err.message);
+  if (await isOnline()) {
+    const dbInstance = new sqlite3.Database(
+      dbPath,
+      sqlite3.OPEN_READONLY,
+      (err) => {
+        if (err) return console.error("Error opening database:", err.message);
 
-      dbInstance.all(`SELECT * FROM system_tracking`, async (err, rows) => {
-        if (err)
-          return console.error("Error reading from database:", err.message);
+        dbInstance.all(`SELECT * FROM system_tracking`, async (err, rows) => {
+          if (err)
+            return console.error("Error reading from database:", err.message);
 
-        try {
-          const response = await axios.post(
-            "https://rms.thesama.in/database-sync",
-            { data: rows }
-          );
-          console.log("Sync successful:", response.data);
-        } catch (error) {
-          console.error("the data is"+JSON.parse(rows));
-          console.error("Error syncing database:", error.message);
-        }
-      });
+          try {
+            const response = await axios.post(
+              "https://rms.thesama.in/database-sync",
+              { data: rows }
+            );
+            console.log("Sync successful:", response.data);
+          } catch (error) {
+            console.error("Error syncing database:", error.message);
+          }
+        });
 
-      dbInstance.close();
-    }
-  );
+        dbInstance.close();
+      }
+    );
+  } else {
+    console.log("Laptop is offline. Skipping database sync.");
+  }
 }
 
 // Sync database every 3 hours
-setInterval(syncDatabase, 10000); // 3 hours in milliseconds
+setInterval(syncDatabase, 600000); // 3 hours in milliseconds
 syncDatabase(); // Initial sync on startup
 
 // Handle app lifecycle events
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+  ensureUserDataFiles();
+  createWindow();
+});
 
 app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") app.quit();
+  if (process.platform !== "darwin") {
+    app.quit();
+  }
 });
 
 app.on("activate", () => {
-  if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  // Only create a new window if we don't have one and config.channelSubmitted is false
+  if (BrowserWindow.getAllWindows().length === 0) {
+    const config = readConfig();
+    if (!config.channelSubmitted) {
+      createWindow();
+    }
+  }
 });
-
 // Handle the event from renderer process to save the channel name
+// Update the IPC handler for saving channel name
 ipcMain.on("save-channel-name", (event, channelName) => {
   saveChannelName(channelName);
-  initializeWebSocket([channelName]); // Start WebSocket after saving channel
+  
+  // Update config
+  const config = readConfig();
+  config.channelSubmitted = true;
+  writeConfig(config);
+
+  // Initialize WebSocket
+  initializeWebSocket([channelName]);
+  checkNetworkAndReconnect([channelName]);
+
+  // Hide the window instead of just trying to close it
+  if (mainWindow) {
+    mainWindow.hide();
+  }
 });
 
-// Function to reset the channel (delete channel.json)
-function resetChannel() {
-  fs.unlink(channelFilePath, (err) => {
-    if (err) {
-      console.error("Error deleting channel.json:", err);
-    } else {
-      console.log("Channel reset successful. 'channel.json' deleted.");
-    }
-  });
-}
 
+// Modified reset channel function to work with userData directory
+function resetChannel() {
+  try {
+    ensureUserDataFiles();
+    fs.writeFileSync(
+      channelFilePath,
+      JSON.stringify({ currentChannel: [] }, null, 2),
+      "utf8"
+    );
+    
+    const config = readConfig();
+    config.channelSubmitted = false;
+    writeConfig(config);
+    
+    console.log("Channel reset successful in userData directory");
+
+    if (mainWindow) {
+      mainWindow.show();
+    }
+
+    app.relaunch();
+    app.exit();
+  } catch (error) {
+    console.error("Error resetting channel:", error);
+  }
+}
 // resetChannel()
 ipcMain.on("reset-channel", () => {
   resetChannel();
 });
 
+// Handle the event to check if channel.json exists
+ipcMain.on("check-channel-file", (event) => {
+  const exists = fs.existsSync(channelFilePath);
+  event.sender.send("channel-file-status", exists);
+});
+
 async function getLocation() {
-  try {
-    const response = await axios.get("http://ip-api.com/json/");
-    const { city, regionName, country } = response.data;
-    return `${city}, ${regionName}, ${country}`;
-  } catch (error) {
-    console.error("Error fetching location:", error.message);
+  if (await isOnline()) {
+    try {
+      const response = await axios.get("http://ip-api.com/json/");
+      const { city, regionName, country } = response.data;
+      return `${city}, ${regionName}, ${country}`;
+    } catch (error) {
+      console.error("Error fetching location:", error.message);
+      return "Unknown Location";
+    }
+  } else {
+    console.log("Laptop is offline. Unable to fetch location.");
     return "Unknown Location";
   }
 }
+
 
 function getMacAddress() {
   const networkInterfaces = os.networkInterfaces();
@@ -531,14 +723,17 @@ function getMacAddress() {
       }
     }
   }
-  return "Unknown MAC Address";
+  return "Unknown MAC";
 }
 
 function formatActiveTime(seconds) {
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
   const secs = seconds % 60;
-  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(
+    2,
+    "0"
+  )}:${String(secs).padStart(2, "0")}`;
 }
 
 function isValidTimeFormat(timeString) {
@@ -555,65 +750,66 @@ async function logStatus() {
   const location = await getLocation();
 
   db.get(
-      `SELECT * FROM system_tracking WHERE mac_address=? AND date=?`,
-      [uniqueId, date],
-      (err, row) => {
-          if (err) {
-              console.error("Error selecting from database:", err);
-          } else if (row) {
-              // If a record for today exists
-              let activeTime = row.active_time;
-              console.log("Current active time in DB:", activeTime);
+    `SELECT * FROM system_tracking WHERE mac_address=? AND date=?`,
+    [uniqueId, date],
+    (err, row) => {
+      if (err) {
+        console.error("Error selecting from database:", err);
+      } else if (row) {
+        // If a record for today exists
+        let activeTime = row.active_time;
+        console.log("Current active time in DB:", activeTime);
 
-              // Validate the format
-              if (!isValidTimeFormat(activeTime)) {
-                  console.error("Invalid active time format detected:", activeTime);
-                  // Reset active time to 00:00:00 if the format is invalid
-                  activeTime = "00:00:00";
-              }
+        // Validate the format
+        if (!isValidTimeFormat(activeTime)) {
+          console.error("Invalid active time format detected:", activeTime);
+          // Reset active time to 00:00:00 if the format is invalid
+          activeTime = "00:00:00";
+        }
 
-              // Convert HH:MM:SS to seconds
-              const activeTimeInSeconds = activeTime.split(':').reduce((acc, time) => (60 * acc) + +time, 0);
-              const newActiveTimeInSeconds = activeTimeInSeconds + 60; // Add one minute
-              const newActiveTime = formatActiveTime(newActiveTimeInSeconds);
+        // Convert HH:MM:SS to seconds
+        const activeTimeInSeconds = activeTime
+          .split(":")
+          .reduce((acc, time) => 60 * acc + +time, 0);
+        const newActiveTimeInSeconds = activeTimeInSeconds + 60; // Add one minute
+        const newActiveTime = formatActiveTime(newActiveTimeInSeconds);
 
-              // Update the database with the new active time
-              db.run(
-                  `UPDATE system_tracking SET active_time=?, location=? WHERE mac_address=? AND date=?`,
-                  [newActiveTime, location, uniqueId, date],
-                  (err) => {
-                      if (err) {
-                          console.error("Error updating database:", err);
-                      } else {
-                          console.log(
-                              `${timestamp} - "${uniqueId}" (${username}) active for ${newActiveTime} at ${location} on ${date}`
-                          );
-                      }
-                  }
+        // Update the database with the new active time
+        db.run(
+          `UPDATE system_tracking SET active_time=?, location=? WHERE mac_address=? AND date=?`,
+          [newActiveTime, location, uniqueId, date],
+          (err) => {
+            if (err) {
+              console.error("Error updating database:", err);
+            } else {
+              console.log(
+                `${timestamp} - "${uniqueId}" (${username}) active for ${newActiveTime} at ${location} on ${date}`
               );
-          } else {
-              const newActiveTime = formatActiveTime(60); // Set to one minute for a new record
-
-              db.run(
-                  `INSERT INTO system_tracking(mac_address, username, date, active_time, location) VALUES(?,?,?,?,?)`,
-                  [uniqueId, username, date, newActiveTime, location],
-                  (err) => {
-                      if (err) {
-                          console.error("Error inserting into database:", err);
-                      } else {
-                          console.log(
-                              `${timestamp} - "${uniqueId}" (${username}) active for ${newActiveTime} at ${location} on ${date}`
-                          );
-                      }
-                  }
-              );
+            }
           }
+        );
+      } else {
+        const newActiveTime = formatActiveTime(60); // Set to one minute for a new record
+
+        db.run(
+          `INSERT INTO system_tracking(mac_address, username, date, active_time, location) VALUES(?,?,?,?,?)`,
+          [uniqueId, username, date, newActiveTime, location],
+          (err) => {
+            if (err) {
+              console.error("Error inserting into database:", err);
+            } else {
+              console.log(
+                `${timestamp} - "${uniqueId}" (${username}) active for ${newActiveTime} at ${location} on ${date}`
+              );
+            }
+          }
+        );
       }
+    }
   );
 }
 
 logStatus();
 setInterval(logStatus, 60000);
-
 
 //ghp_ayeoitWUKYEnWCEqT6CJ1NQFUJIlDam0hPeKo
