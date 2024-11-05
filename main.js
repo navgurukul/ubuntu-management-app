@@ -77,8 +77,8 @@ function createWindow() {
       contextIsolation: false,
       sandbox: false,
     },
-    show: false,
-    skipTaskbar: true,
+    // show: false,
+    // skipTaskbar: true,
   });
 
   win.loadFile("index.html");

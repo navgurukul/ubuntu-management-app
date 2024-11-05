@@ -274,7 +274,6 @@ X-GNOME-Autostart-enabled=true`;
       throw err;
     }
   }
-
   async executeCommand(command) {
     return new Promise((resolve, reject) => {
       const macAddress = getMacAddress();
@@ -286,54 +285,27 @@ X-GNOME-Autostart-enabled=true`;
           "gsettings set org.gnome.desktop.background picture-uri"
         )
       ) {
-        const urlMatch = command.match(/'(https?:\/\/[^']+)'/);
-        const permanentDirectory = path.join(process.env.HOME, "wallpapers");
+       const urlMatch = command.match(/"(https?:\/\/[^"]+)"/);
 
-        if (!fs.existsSync(permanentDirectory)) {
-          fs.mkdirSync(permanentDirectory, { recursive: true });
-        }
-
-        if (urlMatch) {
-          const wallpaperUrl = urlMatch[1];
-          const wallpaperPath = path.join(
-            permanentDirectory,
-            path.basename(wallpaperUrl)
-          );
-
-          this.downloadImage(wallpaperUrl, wallpaperPath)
-            .then(() => {
-              const localCommand = `gsettings set org.gnome.desktop.background picture-uri "file://${wallpaperPath}"`;
-              exec(localCommand, (error, stdout, stderr) => {
-                const wallpaperResponse = {
-                  type: "wallpaper",
-                  status: !error,
-                  mac_address: macAddress,
-                };
-                if (error) {
-                  console.error(
-                    `Error executing command "${localCommand}": ${error.message}`
-                  );
-                  wallpaperResponse.status = false;
-                } else {
-                  console.log(
-                    `Wallpaper set successfully using: ${wallpaperPath}`
-                  );
-                }
-                responsePayload.push(wallpaperResponse);
-                this.sendResponse(responsePayload);
-                resolve();
-              });
-            })
-            .catch((error) => {
-              console.error(`Error downloading wallpaper: ${error.message}`);
-              responsePayload.push({
-                type: "wallpaper",
-                status: false,
-                mac_address: macAddress,
-              });
-              this.sendResponse(responsePayload);
-              reject(error);
-            });
+        if (urlMatch && urlMatch[1]) {
+          exec(command, (error, stdout, stderr) => {
+            const wallpaperResponse = {
+              type: "wallpaper",
+              status: !error,
+              mac_address: macAddress,
+            };
+            if (error) {
+              console.error(
+                `Error executing command "${localCommand}": ${error.message}`
+              );
+              wallpaperResponse.status = false;
+            } else {
+              console.log(`Wallpaper set successfully from URL:`);
+            }
+            responsePayload.push(wallpaperResponse);
+            this.sendResponse(responsePayload);
+            error ? reject(error) : resolve();
+          });
         } else {
           console.error("No valid URL found in wallpaper command.");
           responsePayload.push({
@@ -418,11 +390,7 @@ X-GNOME-Autostart-enabled=true`;
           responsePayload.push(otherCommandResponse);
           this.sendResponse(responsePayload);
 
-          if (error) {
-            reject(error);
-          } else {
-            resolve();
-          }
+          error ? reject(error) : resolve();
         });
       }
     });
