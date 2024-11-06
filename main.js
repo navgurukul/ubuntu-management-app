@@ -15,7 +15,7 @@ const axios = require("axios");
 const userDataPath = app.getPath("userData");
 const channelFilePath = path.join(userDataPath, "channel.json");
 const configFilePath = path.join(userDataPath, "config.json");
-
+let commandReceived 
 const dns = require("dns");
 console.log("Starting the app===================...", channelFilePath);
 function isOnline() {
@@ -65,8 +65,8 @@ function checkNetworkAndReconnect(channelNames) {
   setInterval(async () => {
     if (await isOnline()) {
       if (!rws || rws.readyState === WebSocket.CLOSED) {
-        console.log("Network is online. Reconnecting WebSocket...");
-        initializeWebSocket(channelNames);
+         initializeWebSocket(channelNames);
+        console.log("Network is online. ");
       }
     } else {
       console.log("Network is offline. Waiting to reconnect WebSocket...");
@@ -180,6 +180,46 @@ function saveChannelName(channelName) {
     console.error("Error saving channel name:", error);
   }
 }
+function findExecutableWithDpkg(softwareName) {
+  return new Promise((resolve, reject) => {
+    exec(`dpkg -L ${softwareName}`, (error, stdout, stderr) => {
+      if (error) {
+        console.error(
+          `dpkg command error for ${softwareName}: ${error.message}`
+        );
+        return resolve(null);
+      }
+
+      // Find executable paths in /usr/bin within dpkg output
+      const executablePath = stdout
+        .split("\n")
+        .find(
+          (line) => line.startsWith("/usr/bin/") && fs.existsSync(line.trim())
+        );
+      resolve(executablePath ? executablePath.trim() : null);
+    });
+  });
+}
+
+function verifyExecutablePath(execPath, retries = 5, delay = 1000) {
+  return new Promise((resolve, reject) => {
+    const check = (attempt) => {
+      if (fs.existsSync(execPath)) {
+        resolve(true);
+      } else if (attempt < retries) {
+        setTimeout(() => check(attempt + 1), delay);
+      } else {
+        reject(
+          new Error(
+            `Executable not found at ${execPath} after ${retries} attempts.`
+          )
+        );
+      }
+    };
+    check(0);
+  });
+}
+
 
 // Create main window
 
@@ -267,9 +307,13 @@ function initializeWebSocket(channelNames) {
     rws.send(message); // Send subscription message on connection open
   });
   rws.on("message", async (data) => {
+
     try {
+      let tempCommands =  commandReceived
       const dataObj = JSON.parse(data);
       const commands = dataObj.commands;
+
+      commandReceived = commands
 
       const macAddress = getMacAddress(); // Get the MAC address
 
@@ -286,28 +330,30 @@ function initializeWebSocket(channelNames) {
         );
         return; // Exit early if commands is not an array
       }
+      if (tempCommands !== commandReceived) {
+        try {
+          for (const command of commands) {
+            await executeCommand(command);
+          }
 
-      try {
-        for (const command of commands) {
-          await executeCommand(command);
+          console.log("All commands executed. Sending results to the server.");
+         
+          rws.send(
+            JSON.stringify({
+              success: true,
+              mac: macAddress,
+            })
+          );
+        } catch (error) {
+          console.error("An error occurred while executing commands:", error);
+
+          rws.send(
+            JSON.stringify({
+              success: false,
+              mac: macAddress,
+            })
+          );
         }
-
-        console.log("All commands executed. Sending results to the server.");
-        rws.send(
-          JSON.stringify({
-            success: true,
-            mac: macAddress,
-          })
-        );
-      } catch (error) {
-        console.error("An error occurred while executing commands:", error);
-
-        rws.send(
-          JSON.stringify({
-            success: false,
-            mac: macAddress,
-          })
-        );
       }
     } catch (error) {
       console.error("Error parsing JSON:", error.message);
@@ -365,7 +411,9 @@ function initializeWebSocket(channelNames) {
             console.log("Sending to server:", JSON.stringify(responsePayload)); // Log the payload being sent
             resolve();
           });
-        } else {
+        }
+        
+        else {
           console.error("No valid URL found in wallpaper command.");
           responsePayload.push({
             type: "wallpaper",
@@ -383,51 +431,82 @@ function initializeWebSocket(channelNames) {
         command.startsWith("apt install")
       ) {
         // Handle software installation and create shortcuts
-        exec(command, (error, stdout, stderr) => {
-          if (error) {
-            console.error(
-              `Error executing command "${command}": ${error.message}`
-            );
-            responsePayload.push({
-              type: "software",
-              installed_software: command.split(" ")[3] || "unknown",
-              status: false,
-              mac_address: macAddress,
-            });
-            console.log(
-              "Response Payload (Software Installation Error):",
-              responsePayload
-            ); // Log the response payload
-            rws.send(JSON.stringify(responsePayload));
-            console.log("Sending to server:", JSON.stringify(responsePayload)); // Log the payload being sent
-            reject(error);
-          } else {
-            console.log(`Output of "${command}":\n${stdout}`);
-            const commandParts = command.split(" ");
-            const installIndex = commandParts.indexOf("install");
-            if (installIndex !== -1) {
-              const softwareNames = commandParts
-                .slice(installIndex + 1)
-                .filter((part) => !part.startsWith("-"));
-              softwareNames.forEach((software) => {
-                responsePayload.push({
-                  type: "software",
-                  installed_software: software.trim(),
-                  status: true,
-                  mac_address: macAddress,
-                });
-                console.log(
-                  "Response Payload (Software Installed):",
-                  responsePayload
-                );
-                createDesktopShortcut(software.trim());
-              });
-            }
-            rws.send(JSON.stringify(responsePayload));
-            console.log("Sending to server:", JSON.stringify(responsePayload)); // Log the payload being sent
-            resolve();
-          }
-        });
+       exec(command, async (error, stdout, stderr) => {
+         if (error) {
+           console.error(
+             `Error executing command "${command}": ${error.message}`
+           );
+           responsePayload.push({
+             type: "software",
+             installed_software: command.split(" ")[3] || "unknown",
+             status: false,
+             mac_address: macAddress,
+           });
+           console.log(
+             "Response Payload (Software Installation Error):",
+             responsePayload
+           );
+           rws.send(JSON.stringify(responsePayload));
+           console.log("Sending to server:", JSON.stringify(responsePayload));
+           reject(error);
+         } else {
+           console.log(`Output of "${command}":\n${stdout}`);
+           const commandParts = command.split(" ");
+           const installIndex = commandParts.indexOf("install");
+           if (installIndex !== -1) {
+             const softwareNames = commandParts
+               .slice(installIndex + 1)
+               .filter((part) => !part.startsWith("-"));
+
+             // Use a for..of loop to handle async verification
+             for (const software of softwareNames) {
+               const softwareTrimmed = software.trim();
+              const execPath = await findExecutableWithDpkg(softwareTrimmed);
+
+               if (execPath) {
+                 try {
+                   await verifyExecutablePath(execPath); // Ensure the executable is ready
+                   responsePayload.push({
+                     type: "software",
+                     installed_software: softwareTrimmed,
+                     status: true,
+                     mac_address: macAddress,
+                   });
+                   console.log(
+                     "Response Payload (Software Installed):",
+                     responsePayload
+                   );
+                   createDesktopShortcut(execPath, softwareTrimmed); // Use dynamic execPath
+                 } catch (verifyError) {
+                   console.error(
+                     `Failed to verify executable for ${softwareTrimmed}: ${verifyError.message}`
+                   );
+                   responsePayload.push({
+                     type: "software",
+                     installed_software: softwareTrimmed,
+                     status: false,
+                     mac_address: macAddress,
+                   });
+                 }
+               } else {
+                 console.error(
+                   `No executable found in /usr/bin for ${softwareTrimmed}`
+                 );
+                 responsePayload.push({
+                   type: "software",
+                   installed_software: softwareTrimmed,
+                   status: false,
+                   mac_address: macAddress,
+                 });
+               }
+             }
+           }
+           rws.send(JSON.stringify(responsePayload));
+           console.log("Sending to server:", JSON.stringify(responsePayload));
+           resolve();
+         }
+       });
+
       } else {
         // Execute other commands as usual
         exec(command, (error, stdout, stderr) => {
@@ -484,18 +563,17 @@ function downloadImage(url, destination) {
 }
 
 // Function to create desktop shortcut for installed software
-function createDesktopShortcut(softwareName) {
+
+
+function createDesktopShortcut(execPath, softwareName) {
   const desktopPath = path.join(
     os.homedir(),
     "Desktop",
     `${softwareName}.desktop`
   );
 
-  const execPath = `/usr/bin/${softwareName}`;
-
   const defaultIconPath =
     "/usr/share/icons/hicolor/48x48/apps/utilities-terminal.png";
-
   const softwareIconPath = `/usr/share/icons/hicolor/48x48/apps/${softwareName}.png`;
 
   let iconPath = fs.existsSync(softwareIconPath)
@@ -503,13 +581,15 @@ function createDesktopShortcut(softwareName) {
     : defaultIconPath;
 
   const shortcutContent = `[Desktop Entry]
-   Type=Application
-   Name=${softwareName}
-   Exec=${execPath}
-   Icon=${iconPath}
-   Terminal=false
-   Categories=Utility;
-   X-GNOME-Autostart-enabled=true`;
+Type=Application
+Name=${softwareName}
+Exec=${execPath}
+Icon=${iconPath}
+Terminal=false
+Categories=Utility;
+X-GNOME-Autostart-enabled=true
+X-GIO-NoFuse=true
+StartupNotify=false`;
 
   fs.writeFile(desktopPath, shortcutContent, (err) => {
     if (err) {
@@ -518,9 +598,21 @@ function createDesktopShortcut(softwareName) {
       );
     } else {
       console.log(`Shortcut for ${softwareName} created successfully.`);
+            exec(`chmod +x "${desktopPath}"`, (chmodError) => {
+              if (chmodError) {
+                console.error(
+                  `Error setting executable permission for ${desktopPath}: ${chmodError.message}`
+                );
+              } else {
+                console.log(
+                  `Executable permission set for ${desktopPath}. Shortcut is ready to launch.`
+                );
+              }
+            });
     }
   });
 }
+
 
 // Function to get MAC address
 function getMacAddress() {
