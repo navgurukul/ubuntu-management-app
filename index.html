@@ -1,53 +1,63 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Channel Input</title>
+    <meta charset="utf-8">
+    <title>Channel Setup</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f0f0f0;
+        }
+        .container {
+            text-align: center;
+            padding: 20px;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        input {
+            margin: 10px 0;
+            padding: 8px;
+            width: 200px;
+        }
+        button {
+            padding: 8px 16px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+    </style>
 </head>
 <body>
-    <div id="channel-prompt" style="display:none;">
-        <h1>Welcome to the Electron App</h1>
-        <p>Please enter your channel name:</p>
-        <input type="text" id="channel-name" placeholder="Channel Name" />
-        <button onclick="submitChannelName()">Submit</button>
+    <div class="container">
+        <h2>Enter Channel Name</h2>
+        <input type="text" id="channelInput" placeholder="Channel Name">
+        <br>
+        <button onclick="submitChannel()">Submit</button>
     </div>
-
-    <button id="reset-channel-btn" style="display:none;">Reset Channel</button>
-
     <script>
-        const { ipcRenderer } = require("electron");
+        const { ipcRenderer } = require('electron');
 
-        // Show the prompt when main process sends "prompt-channel-name" event
-        ipcRenderer.on("prompt-channel-name", () => {
-            document.getElementById("channel-prompt").style.display = "block";
-            document.getElementById("reset-channel-btn").style.display = "none";
-        });
-
-        function submitChannelName() {
-            const channelName = document.getElementById("channel-name").value;
+        function submitChannel() {
+            const channelName = document.getElementById('channelInput').value;
             if (channelName) {
-                ipcRenderer.send("save-channel-name", channelName);
-                // Don't hide elements here - window will be hidden by main process
-            } else {
-                alert("Please enter a channel name.");
+                ipcRenderer.send('save-channel-name', channelName);
             }
         }
 
-        document.getElementById('reset-channel-btn').addEventListener('click', () => {
-            ipcRenderer.send('reset-channel');
-        });
-
-        // Initial state check
-        ipcRenderer.send("check-channel-file");
-        
-        ipcRenderer.on("channel-file-status", (event, exists) => {
-            if (exists) {
-                document.getElementById("channel-prompt").style.display = "none";
-                document.getElementById("reset-channel-btn").style.display = "block";
-            } else {
-                document.getElementById("channel-prompt").style.display = "block";
-                document.getElementById("reset-channel-btn").style.display = "none";
+        document.getElementById('channelInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                submitChannel();
             }
         });
     </script>

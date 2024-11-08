@@ -27,26 +27,4 @@ function saveChannelName(channelName) {
   }
 }
 
-function resetChannel() {
-  try {
-    ensureUserDataFilesSync();
-    fs.writeFileSync(
-      channelFilePath,
-      JSON.stringify({ currentChannel: [] }, null, 2),
-      "utf8"
-    );
-
-    const config = readConfig();
-    config.channelSubmitted = false;
-    writeConfig(config);
-
-    console.log("Channel reset successful");
-
-    app.relaunch();
-    app.exit();
-  } catch (error) {
-    console.error("Error resetting channel:", error);
-  }
-}
-
-module.exports = { getCurrentChannel, saveChannelName, resetChannel };
+module.exports = { getCurrentChannel, saveChannelName };

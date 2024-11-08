@@ -9,12 +9,13 @@ const { initializeDatabase } = require("./utils/database");
 app.commandLine.appendSwitch("no-sandbox");
 app.commandLine.appendSwitch("disable-gpu");
 
-// Initialize app
-app.whenReady().then(async () => {
+let mainWindow = null;
+
+app.whenReady().then(() => {
   try {
-    await fileSystem.ensureUserDataFiles();
+    fileSystem.ensureUserDataFilesSync(); // Use sync version here
     initializeDatabase();
-    createWindow();
+    mainWindow = createWindow();
     startPeriodicTasks();
     setupAutoUpdater();
   } catch (error) {
@@ -30,11 +31,7 @@ app.on("window-all-closed", () => {
 
 app.on("activate", () => {
   const { BrowserWindow } = require("electron");
-  const { readConfig } = require("./utils/config");
   if (BrowserWindow.getAllWindows().length === 0) {
-    const config = readConfig();
-    if (!config.channelSubmitted) {
-      createWindow();
-    }
+    mainWindow = createWindow();
   }
 });

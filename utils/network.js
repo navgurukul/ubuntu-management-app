@@ -1,10 +1,15 @@
-const dns = require("dns");
 const WebSocket = require("ws");
+const dns = require("dns");
+const { initializeWebSocket } = require("../websocket/client");
 
 function isOnline() {
   return new Promise((resolve) => {
     dns.lookup("google.com", (err) => {
-      resolve(!err || err.code !== "ENOTFOUND");
+      if (err && err.code === "ENOTFOUND") {
+        resolve(false);
+      } else {
+        resolve(true);
+      }
     });
   });
 }
@@ -13,12 +18,15 @@ function checkNetworkAndReconnect(channelNames) {
   setInterval(async () => {
     if (await isOnline()) {
       if (!global.rws || global.rws.readyState === WebSocket.CLOSED) {
-        const { initializeWebSocket } = require("../websocket/client");
         initializeWebSocket(channelNames);
         console.log("Network is online. Reconnecting WebSocket...");
       }
     } else {
       console.log("Network is offline. Waiting to reconnect WebSocket...");
+      if (global.rws) {
+        global.rws.close();
+        global.rws = null;
+      }
     }
   }, 5000);
 }

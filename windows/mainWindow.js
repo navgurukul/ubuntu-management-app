@@ -26,10 +26,29 @@ function createWindow() {
   });
 
   mainWindow.loadFile("index.html");
-  mainWindow.once("ready-to-show", () => {
-    mainWindow.show();
-    mainWindow.webContents.send("prompt-channel-name");
-  });
+
+  // Read config before deciding to show window
+  const config = readConfig();
+
+  if (!config.channelSubmitted) {
+    // Only show window if channel hasn't been submitted
+    mainWindow.once("ready-to-show", () => {
+      mainWindow.show();
+      mainWindow.webContents.send("prompt-channel-name");
+    });
+  } else {
+    // If channel is already submitted, initialize WebSocket without showing window
+    const channelNames = getCurrentChannel();
+    console.log(`Loaded Channel Names: ${channelNames.join(", ")}`);
+    if (channelNames && channelNames.length > 0) {
+      try {
+        initializeWebSocket(channelNames);
+        checkNetworkAndReconnect(channelNames);
+      } catch (error) {
+        console.error("Error initializing WebSocket:", error);
+      }
+    }
+  }
 
   setupIpcHandlers();
 
@@ -44,8 +63,12 @@ function setupIpcHandlers() {
     config.channelSubmitted = true;
     writeConfig(config);
 
-    initializeWebSocket([channelName]);
-    checkNetworkAndReconnect([channelName]);
+    try {
+      initializeWebSocket([channelName]);
+      checkNetworkAndReconnect([channelName]);
+    } catch (error) {
+      console.error("Error initializing WebSocket after channel save:", error);
+    }
 
     if (mainWindow) {
       mainWindow.hide();

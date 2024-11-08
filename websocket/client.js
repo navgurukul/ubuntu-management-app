@@ -1,12 +1,16 @@
-// websocket/client.js
 const WebSocket = require("ws");
 const { getMacAddress } = require("../utils/system");
 const { executeCommand } = require("../utils/commands");
 
-let commandReceived;
+let commandReceived = null;
 global.rws = null;
 
 function initializeWebSocket(channelNames) {
+  if (global.rws && global.rws.readyState === WebSocket.OPEN) {
+    console.log("WebSocket connection already exists");
+    return;
+  }
+
   global.rws = new WebSocket("wss://rms.thesama.in");
 
   console.log(`Connecting to WebSocket server with channels: ${channelNames}`);
@@ -17,67 +21,63 @@ function initializeWebSocket(channelNames) {
       type: "subscribe",
       channels: channelNames,
     });
+    console.log("Sending message to server:", message);
     global.rws.send(message);
   });
 
-  global.rws.on("message", handleWebSocketMessage);
-  global.rws.on("close", handleWebSocketClose);
-  global.rws.on("error", handleWebSocketError);
-}
+  global.rws.on("message", async (data) => {
+    try {
+      let tempCommands = commandReceived;
+      const dataObj = JSON.parse(data);
+      const commands = dataObj.commands;
 
-async function handleWebSocketMessage(data) {
-  try {
-    let tempCommands = commandReceived;
-    const dataObj = JSON.parse(data);
-    const commands = dataObj.commands;
-    commandReceived = commands;
+      commandReceived = commands;
 
-    const macAddress = getMacAddress();
-
-    if (!Array.isArray(commands)) {
-      console.error("Received commands is not an array:", commands);
-      global.rws.send(
-        JSON.stringify({
-          success: false,
-          mac: macAddress,
-          error: "Commands is not an array",
-        })
-      );
-      return;
-    }
-
-    if (tempCommands !== commandReceived) {
-      try {
-        for (const command of commands) {
-          await executeCommand(command);
-        }
-        global.rws.send(
-          JSON.stringify({
-            success: true,
-            mac: macAddress,
-          })
-        );
-      } catch (error) {
-        console.error("Error executing commands:", error);
-        global.rws.send(
-          JSON.stringify({
-            success: false,
-            mac: macAddress,
-          })
-        );
+      if (!Array.isArray(commands)) {
+        console.error("Received commands is not an array:", commands);
+        handleInvalidCommands();
+        return;
       }
+
+      if (JSON.stringify(tempCommands) !== JSON.stringify(commandReceived)) {
+        try {
+          for (const command of commands) {
+            await executeCommand(command);
+          }
+          console.log("All commands executed successfully.");
+        } catch (error) {
+          console.error("Error executing commands:", error);
+        }
+      } else {
+        console.log("Commands unchanged, skipping execution");
+      }
+    } catch (error) {
+      console.error("Error parsing WebSocket message:", error);
     }
-  } catch (error) {
-    console.error("Error parsing JSON:", error.message);
+  });
+
+  global.rws.on("close", (event) => {
+    console.log("[Client] Connection closed.", event.code, event.reason);
+    global.rws = null;
+  });
+
+  global.rws.on("error", (error) => {
+    console.error("[Client] Error:", error.message);
+    global.rws = null;
+  });
+}
+
+function handleInvalidCommands() {
+  const macAddress = getMacAddress();
+  if (global.rws && global.rws.readyState === WebSocket.OPEN) {
+    global.rws.send(
+      JSON.stringify({
+        success: false,
+        mac: macAddress,
+        error: "Commands is not an array",
+      })
+    );
   }
-}
-
-function handleWebSocketClose(event) {
-  console.log("[Client] Connection closed.", event.code, event.reason);
-}
-
-function handleWebSocketError(error) {
-  console.error("[Client] Error:", error.message);
 }
 
 module.exports = { initializeWebSocket };
