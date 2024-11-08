@@ -23,7 +23,7 @@ A desktop application built with Electron for managing Ubuntu systems remotely. 
 
 1. Clone the repository:
 ```bash
-git clone [repository-url]
+git clone https://github.com/navgurukul/ubuntu-management-app.git
 cd ubuntu-management-app
 ```
 
