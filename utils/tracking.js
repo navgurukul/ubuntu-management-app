@@ -1,15 +1,19 @@
+// utils/tracking.js
 const os = require("os");
-const { getMacAddress, formatActiveTime } = require("./system");
+const { getMacAddress, getStoredMacAddress } = require("./system");
 const { getLocation } = require("./location");
 const { getDatabase } = require("./database");
-
+const {formatActiveTime}= require("../utils/system")
 function isValidTimeFormat(timeString) {
   const timePattern = /^\d{2}:\d{2}:\d{2}$/;
   return timePattern.test(timeString);
 }
 
 async function logStatus() {
-  const uniqueId = getMacAddress();
+  // Try to get stored MAC first, then fall back to current MAC
+  const storedMac = getStoredMacAddress();
+  const uniqueId = storedMac || getMacAddress();
+
   const username = os.userInfo().username;
   const timestamp = new Date().toISOString();
   const date = new Date().toISOString().split("T")[0];
