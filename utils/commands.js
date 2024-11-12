@@ -140,7 +140,42 @@ function handleWallpaperCommand(
     reject(new Error("No valid URL in command"));
   }
 }
+function handleSerialNumber(
+  command,
+  macAddress,
+  responsePayload,
+  resolve,
+  reject
+) {
+  exec(command, (error, stdout, stderr) => {
+    if (error) {
+      console.error(`Error executing command "${command}": ${error.message}`);
+      responsePayload.push({
+        type: "serialNumber",
+        serial: "unknown",
+        status: false,
+        mac_address: macAddress,
+      });
+    } else {
+      // Parse the serial number from command output
+      const serialMatch = stdout.match(/Serial Number:\s*(.+)/);
+      const serialNumber = serialMatch ? serialMatch[1].trim() : "unknown";
 
+      console.log(`System Serial Number: ${serialNumber}`);
+      responsePayload.push({
+        type: "serialNumber",
+        serial: serialNumber,
+        status: true,
+        mac_address: macAddress,
+      });
+    }
+
+    console.log("Response Payload (Serial Number):", responsePayload);
+    global.rws.send(JSON.stringify(responsePayload));
+    console.log("Sending to server:", JSON.stringify(responsePayload));
+    resolve();
+  });
+}
 function handleSoftwareInstallation(
   command,
   macAddress,
@@ -230,7 +265,9 @@ function executeCommand(command) {
 
     console.log(`Executing command: ${command}`);
 
-    if (
+    if (command == "sudo dmidecode -t system | grep Serial") {
+      handleSerialNumber(command, macAddress, responsePayload, resolve, reject);
+    } else if (
       command.startsWith(
         "gsettings set org.gnome.desktop.background picture-uri"
       )
