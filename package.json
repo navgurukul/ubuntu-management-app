@@ -1,6 +1,6 @@
 {
   "name": "ubuntu-management-app",
-  "version": "1.0.9",
+  "version": "1.1.0",
   "main": "main.js",
   "description": "Remote Ubuntu management app",
   "author": "Shivansh",
@@ -49,6 +49,7 @@
   },
   "dependencies": {
     "axios": "^1.7.7",
+    "better-sqlite3": "^11.5.0",
     "electron-log": "^5.2.0",
     "electron-updater": "^6.3.9",
     "express": "^4.20.0",

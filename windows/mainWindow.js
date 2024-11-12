@@ -5,14 +5,18 @@ const {
   saveChannelName,
   resetChannel,
 } = require("../utils/channel");
-const { initializeWebSocket } = require("../websocket/client");
-const { checkNetworkAndReconnect } = require("../utils/network");
+const config = require("../config/paths");
 const fs = require("fs");
-const { channelFilePath } = require("../config/paths");
 
 let mainWindow = null;
+let websocketManager = null;
 
 function createWindow() {
+  // Lazy load the websocket manager to avoid circular dependency
+  if (!websocketManager) {
+    websocketManager = require("../websocket/websocket-manager");
+  }
+
   mainWindow = new BrowserWindow({
     width: 800,
     height: 600,
@@ -27,27 +31,19 @@ function createWindow() {
 
   mainWindow.loadFile("index.html");
 
-  // Read config before deciding to show window
-  const config = readConfig();
+  const appConfig = readConfig();
 
-  if (!config.channelSubmitted) {
-    // Only show window if channel hasn't been submitted
+  if (!appConfig.channelSubmitted) {
     mainWindow.once("ready-to-show", () => {
       mainWindow.show();
       mainWindow.webContents.send("prompt-channel-name");
     });
   } else {
-    // If channel is already submitted, initialize WebSocket without showing window
     const channelNames = getCurrentChannel();
     console.log(`Loaded Channel Names: ${channelNames.join(", ")}`);
-    if (channelNames && channelNames.length > 0) {
-      try {
-        initializeWebSocket(channelNames);
-        checkNetworkAndReconnect(channelNames);
-      } catch (error) {
-        console.error("Error initializing WebSocket:", error);
-      }
-    }
+    websocketManager.initializeWebSocket(channelNames);
+    // Use the properly exported checkConnection
+    websocketManager.checkConnection(channelNames);
   }
 
   setupIpcHandlers();
@@ -59,16 +55,12 @@ function setupIpcHandlers() {
   ipcMain.on("save-channel-name", (event, channelName) => {
     saveChannelName(channelName);
 
-    const config = readConfig();
-    config.channelSubmitted = true;
-    writeConfig(config);
+    const appConfig = readConfig();
+    appConfig.channelSubmitted = true;
+    writeConfig(appConfig);
 
-    try {
-      initializeWebSocket([channelName]);
-      checkNetworkAndReconnect([channelName]);
-    } catch (error) {
-      console.error("Error initializing WebSocket after channel save:", error);
-    }
+    websocketManager.initializeWebSocket([channelName]);
+    websocketManager.checkConnection([channelName]);
 
     if (mainWindow) {
       mainWindow.hide();
@@ -80,8 +72,10 @@ function setupIpcHandlers() {
   });
 
   ipcMain.on("check-channel-file", (event) => {
-    const exists = fs.existsSync(channelFilePath);
-    event.sender.send("channel-file-status", exists);
+    event.sender.send(
+      "channel-file-status",
+      fs.existsSync(config.channelFilePath)
+    );
   });
 }
 
