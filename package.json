@@ -1,8 +1,8 @@
 {
-  "name": "ubuntu-management-app",
-  "version": "1.1.0",
+  "name": "system-service-monitor",
+  "version": "1.1.2",
   "main": "main.js",
-  "description": "Remote Ubuntu management app",
+  "description": "Essential system service and resource monitoring utility for Ubuntu systems",
   "author": "Shivansh",
   "license": "ISC",
   "scripts": {
@@ -16,8 +16,8 @@
     "url": "https://github.com/navgurukul/ubuntu-management-app.git"
   },
   "build": {
-    "appId": "com.shivansh.ubuntu-management-app",
-    "productName": "Ubuntu Management App",
+    "appId": "com.shivansh.system-service-monitor",
+    "productName": "System Service Monitor",
     "directories": {
       "output": "dist"
     },
@@ -31,11 +31,16 @@
     "linux": {
       "target": "deb",
       "maintainer": "Shivansh",
-      "category": "Utility",
-      "icon": "build/icon.png",
+      "category": "System",
       "executableArgs": [
         "--no-sandbox"
-      ]
+      ],
+      "desktop": {
+        "Name": "System Service Monitor",
+        "Comment": "Monitor and manage system services",
+        "Categories": "System;Monitor;Utility;",
+        "Type": "Application"
+      }
     },
     "files": [
       "**/*",
@@ -44,7 +49,8 @@
     ],
     "deb": {
       "priority": "optional",
-      "depends": []
+      "depends": [],
+      "description": "System service and resource monitoring utility for Ubuntu systems"
     }
   },
   "dependencies": {

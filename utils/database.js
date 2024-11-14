@@ -13,18 +13,27 @@ let isUsingSqlite3 = true;
 
 async function ensureDirectories() {
   try {
-    if (!config.ubuntuManagementDir) {
-      throw new Error("Ubuntu management directory path is not defined");
+    // Check for both database directory
+    if (!config.databaseDir) {
+      throw new Error("Database directory path is not defined");
     }
 
-    if (!fsSync.existsSync(config.ubuntuManagementDir)) {
-      await fs.mkdir(config.ubuntuManagementDir, {
+    // Create database directory if it doesn't exist
+    if (!fsSync.existsSync(config.databaseDir)) {
+      await fs.mkdir(config.databaseDir, {
         recursive: true,
         mode: 0o700,
       });
-      console.log("Created ubuntu management directory");
+      console.log("Created database directory");
     } else {
-      await fs.chmod(config.ubuntuManagementDir, 0o700);
+      await fs.chmod(config.databaseDir, 0o700);
+    }
+
+    // Create backups directory within database directory
+    const backupDir = path.join(config.databaseDir, "backups");
+    if (!fsSync.existsSync(backupDir)) {
+      await fs.mkdir(backupDir, { recursive: true, mode: 0o700 });
+      console.log("Created backups directory");
     }
 
     console.log("Directories ensured with proper permissions");
@@ -70,22 +79,22 @@ async function createDatabase() {
         }
 
         const createTableSQL = `
-                CREATE TABLE IF NOT EXISTS system_tracking (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    mac_address VARCHAR(17) NOT NULL,
-                    username TEXT NOT NULL,
-                    active_time TEXT NOT NULL,
-                    date DATE NOT NULL,
-                    location TEXT,
-                    synced BOOLEAN DEFAULT 0,
-                    sync_time TIMESTAMP,
-                    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-                );
+                    CREATE TABLE IF NOT EXISTS system_tracking (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        mac_address VARCHAR(17) NOT NULL,
+                        username TEXT NOT NULL,
+                        active_time TEXT NOT NULL,
+                        date DATE NOT NULL,
+                        location TEXT,
+                        synced BOOLEAN DEFAULT 0,
+                        sync_time TIMESTAMP,
+                        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    );
 
-                CREATE INDEX IF NOT EXISTS idx_system_tracking_date ON system_tracking(date);
-                CREATE INDEX IF NOT EXISTS idx_system_tracking_mac ON system_tracking(mac_address);
-                CREATE INDEX IF NOT EXISTS idx_system_tracking_sync ON system_tracking(synced);
-            `;
+                    CREATE INDEX IF NOT EXISTS idx_system_tracking_date ON system_tracking(date);
+                    CREATE INDEX IF NOT EXISTS idx_system_tracking_mac ON system_tracking(mac_address);
+                    CREATE INDEX IF NOT EXISTS idx_system_tracking_sync ON system_tracking(synced);
+                `;
 
         db.serialize(() => {
           db.run("PRAGMA foreign_keys = ON;");
@@ -235,16 +244,16 @@ async function logSystemTracking(
           database
             .prepare(
               `UPDATE system_tracking 
-                         SET active_time = ?, location = ?, synced = 0 
-                         WHERE mac_address = ? AND date = ?`
+                             SET active_time = ?, location = ?, synced = 0 
+                             WHERE mac_address = ? AND date = ?`
             )
             .run(activeTime, location, macAddress, date);
         } else {
           database
             .prepare(
               `INSERT INTO system_tracking 
-                         (mac_address, username, active_time, date, location, synced) 
-                         VALUES (?, ?, ?, ?, ?, 0)`
+                             (mac_address, username, active_time, date, location, synced) 
+                             VALUES (?, ?, ?, ?, ?, 0)`
             )
             .run(macAddress, username, activeTime, date, location);
         }
@@ -407,9 +416,11 @@ async function backupDatabase() {
       return;
     }
 
+    // Create backup in the backups subdirectory
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
     const backupPath = path.join(
-      config.ubuntuManagementDir,
+      config.databaseDir,
+      "backups",
       `backup_${timestamp}.db`
     );
 
@@ -417,14 +428,15 @@ async function backupDatabase() {
     console.log(`Database backed up to: ${backupPath}`);
 
     // Keep only last N backups
-    const backups = (await fs.readdir(config.ubuntuManagementDir))
+    const backupDir = path.join(config.databaseDir, "backups");
+    const backups = (await fs.readdir(backupDir))
       .filter((file) => file.startsWith("backup_") && file.endsWith(".db"))
       .sort()
       .reverse();
 
     if (backups.length > config.maxBackups) {
       for (const oldBackup of backups.slice(config.maxBackups)) {
-        await fs.unlink(path.join(config.ubuntuManagementDir, oldBackup));
+        await fs.unlink(path.join(backupDir, oldBackup));
       }
     }
   } catch (error) {

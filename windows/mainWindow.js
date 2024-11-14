@@ -27,6 +27,7 @@ function createWindow() {
     },
     show: false,
     skipTaskbar: true,
+    title: "System Service Monitor",
   });
 
   mainWindow.loadFile("index.html");
