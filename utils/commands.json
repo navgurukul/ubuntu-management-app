@@ -1,0 +1,62 @@
+[
+  {
+    "command": "sudo apt install -y curl",
+    "isExecuted": true,
+    "shouldRepeat": false
+  },
+  {
+    "command": "sudo dmidecode -t system | grep Serial",
+    "isExecuted": true,
+    "shouldRepeat": false
+  },
+  {
+    "command": "sudo curl -fsSLo /usr/share/keyrings/brave-browser-archive-keyring.gpg https://brave-browser-apt-release.s3.brave.com/brave-browser-archive-keyring.gpg",
+    "isExecuted": true,
+    "shouldRepeat": false
+  },
+  {
+    "command": "echo \"deb [signed-by=/usr/share/keyrings/brave-browser-archive-keyring.gpg] https://brave-browser-apt-release.s3.brave.com/ stable main\" | sudo tee /etc/apt/sources.list.d/brave-browser.list",
+    "isExecuted": true,
+    "shouldRepeat": false
+  },
+  {
+    "command": "sudo apt install -y brave-browser jq",
+    "isExecuted": true,
+    "shouldRepeat": false
+  },
+  {
+    "command": "gsettings set org.gnome.desktop.background picture-uri 'https://chanakya-dev.s3.ap-south-1.amazonaws.com/sama_wallpaper/28ba830b-daab-4db4-84f9-be9b8da6ab00-Sama%20Wallpaper%20%2818%29.png'",
+    "isExecuted": true,
+    "shouldRepeat": false
+  },
+  {
+    "command": "sudo mkdir -p /etc/opt/brave/policies/managed",
+    "isExecuted": true,
+    "shouldRepeat": false
+  },
+  {
+    "command": "sudo chmod 755 /etc/opt/brave/policies/managed",
+    "isExecuted": true,
+    "shouldRepeat": false
+  },
+  {
+    "command": "echo '{\"HomepageLocation\": \"https://www.ecosia.org/?addon=bravegpo&tt=d1de189f\", \"RestoreOnStartupURLs\": [\"https://www.ecosia.org/?addon=bravegpo&tt=d1de189f\"], \"DefaultSearchProviderEnabled\": true}' | sudo tee /etc/opt/brave/policies/managed/policy.json",
+    "isExecuted": true,
+    "shouldRepeat": false
+  },
+  {
+    "command": "mkdir -p \"$HOME/.config/BraveSoftware/Brave-Browser/Default\"",
+    "isExecuted": true,
+    "shouldRepeat": false
+  },
+  {
+    "command": "echo '{\"homepage_is_newtabpage\": false, \"homepage\": \"https://www.ecosia.org/?addon=bravegpo&tt=d1de189f\", \"session\": {\"restore_on_startup\": 4, \"startup_urls\": [\"https://www.ecosia.org/?addon=bravegpo&tt=d1de189f\"]}}' > \"$HOME/.config/BraveSoftware/Brave-Browser/Default/Preferences\"",
+    "isExecuted": true,
+    "shouldRepeat": false
+  },
+  {
+    "command": "sudo apt update",
+    "isExecuted": true,
+    "shouldRepeat": false
+  }
+]

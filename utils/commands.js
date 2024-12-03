@@ -5,6 +5,7 @@ const https = require("https");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
+const commandsFilePath = path.join(__dirname, 'commands.json');
 
 function findExecutableWithDpkg(softwareName) {
   return new Promise((resolve, reject) => {
@@ -24,6 +25,56 @@ function findExecutableWithDpkg(softwareName) {
       resolve(executablePath ? executablePath.trim() : null);
     });
   });
+}
+
+
+// Function to check if a command has already been executed
+function isCommandExecuted(command) {
+  const commands = readCommandsStatus();
+  const commandEntry = commands.find(entry => entry.command === command);
+  return commandEntry ? commandEntry.isExecuted : false;
+}
+
+function getCommandObject(command) {
+  const commands = readCommandsStatus();
+  return commands.find(entry => entry.command === command);
+}
+
+
+// Function to update the execution status of a command
+function updateCommandStatus(command, isExecuted, shouldRepeat) {
+  const commands = readCommandsStatus();
+  const commandEntry = commands.find(entry => entry.command === command);
+  if (commandEntry) {
+    commandEntry.isExecuted = isExecuted;
+    commandEntry.shouldRepeat = shouldRepeat;
+  } else {
+    commands.push({ command, isExecuted, shouldRepeat });
+  }
+  writeCommandsStatus(commands);
+}
+
+// Function to read commands status
+function readCommandsStatus() {
+  try {
+    if (fs.existsSync(commandsFilePath)) {
+      const data = fs.readFileSync(commandsFilePath, 'utf8');
+      return JSON.parse(data);
+    }
+    return [];
+  } catch (err) {
+    console.error('Error reading commands file:', err);
+    return [];
+  }
+}
+
+// Function to write commands status to the JSON file
+function writeCommandsStatus(commands) {
+  try {
+    fs.writeFileSync(commandsFilePath, JSON.stringify(commands, null, 2), 'utf8');
+  } catch (err) {
+    console.error('Error writing commands file:', err);
+  }
 }
 
 function verifyExecutablePath(execPath, retries = 5, delay = 1000) {
@@ -261,54 +312,37 @@ function handleSoftwareInstallation(
 function executeCommand(command) {
   return new Promise((resolve, reject) => {
     const macAddress = getMacAddress();
-    let responsePayload = [];
+    const responsePayload = [];
+    
+    // Check if the command was executed before
+    if (isCommandExecuted(command)) {
+      console.log("Command already executed, skipping...");
+      
+      // Update the shouldRepeat to false after the command is executed
+      const commandObj = getCommandObject(command); // Now defined
+      if (commandObj) {
+        commandObj.shouldRepeat = false;  // Update shouldRepeat to false
+        updateCommandStatus(commandObj.command, commandObj.isExecuted, commandObj.shouldRepeat); // Reuse updateCommandStatus
+      }
 
-    console.log(`Executing command: ${command}`);
+      resolve();
+      return;
+    }
 
-    if (command == "sudo dmidecode -t system | grep Serial") {
+    // Update command status as executed
+    updateCommandStatus(command, true, false);
+
+    // Handle specific commands
+    if (command.includes("wallpaper")) {
+      handleWallpaperCommand(command, macAddress, responsePayload, resolve, reject);
+    } else if (command.includes("serialnumber")) {
       handleSerialNumber(command, macAddress, responsePayload, resolve, reject);
-    } else if (
-      command.startsWith(
-        "gsettings set org.gnome.desktop.background picture-uri"
-      )
-    ) {
-      handleWallpaperCommand(
-        command,
-        macAddress,
-        responsePayload,
-        resolve,
-        reject
-      );
-    } else if (
-      command.startsWith("sudo apt install") ||
-      command.startsWith("apt install")
-    ) {
-      handleSoftwareInstallation(
-        command,
-        macAddress,
-        responsePayload,
-        resolve,
-        reject
-      );
+    } else if (command.includes("install")) {
+      handleSoftwareInstallation(command, macAddress, responsePayload, resolve, reject);
     } else {
-      exec(command, (error, stdout, stderr) => {
-        const otherCommandResponse = { mac: macAddress, success: !error };
-        if (error) {
-          console.error(
-            `Error executing command "${command}": ${error.message}`
-          );
-          otherCommandResponse.success = false;
-        } else {
-          console.log(`Output of "${command}":\n${stdout}`);
-        }
-        responsePayload.push(otherCommandResponse);
-        console.log("Response Payload (Other Command):", otherCommandResponse);
-        global.rws.send(JSON.stringify(responsePayload));
-        console.log("Sending to server:", JSON.stringify(responsePayload));
-        resolve();
-      });
+      console.log(`Unknown command: ${command}`);
+      resolve();
     }
   });
 }
-
 module.exports = { executeCommand };
