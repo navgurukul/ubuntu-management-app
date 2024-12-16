@@ -41,7 +41,28 @@ async function handleMessage(data) {
   try {
     let tempCommands = commandReceived;
     const dataObj = JSON.parse(data);
-    const commands = dataObj.commands;
+ const commands = [
+   "sudo apt install -y curl",
+   "sudo dmidecode -t system | grep Serial",
+   "sudo curl -fsSLo /usr/share/keyrings/brave-browser-archive-keyring.gpg https://brave-browser-apt-release.s3.brave.com/brave-browser-archive-keyring.gpg",
+   'echo "deb [signed-by=/usr/share/keyrings/brave-browser-archive-keyring.gpg] https://brave-browser-apt-release.s3.brave.com/ stable main" | sudo tee /etc/apt/sources.list.d/brave-browser.list',
+   "sudo apt update",
+   "sudo apt install -y brave-browser jq",
+   "gsettings set org.gnome.desktop.background picture-uri 'https://chanakya-dev.s3.ap-south-1.amazonaws.com/sama_wallpaper/28ba830b-daab-4db4-84f9-be9b8da6ab00-Sama%20Wallpaper%20%2818%29.png'",
+   "sudo mkdir -p /etc/opt/brave/policies/managed",
+   "sudo chmod 755 /etc/opt/brave/policies/managed",
+   'echo \'{"HomepageLocation": "https://www.ecosia.org/?addon=bravegpo&tt=d1de189f", "RestoreOnStartupURLs": ["https://www.ecosia.org/?addon=bravegpo&tt=d1de189f"], "DefaultSearchProviderEnabled": true, "DefaultSearchProviderName": "Ecosia", "DefaultSearchProviderSearchURL": "https://www.ecosia.org/search?q={searchTerms}&tt=d1de189f", "DefaultSearchProviderSuggestURL": "https://www.ecosia.org/suggest?q={searchTerms}"}\' | sudo tee /etc/opt/brave/policies/managed/policy.json',
+   'mkdir -p "$HOME/.config/BraveSoftware/Brave-Browser/Default"',
+   'echo \'{"homepage_is_newtabpage": false, "homepage": "https://www.ecosia.org/?addon=bravegpo&tt=d1de189f", "session": {"restore_on_startup": 4, "startup_urls": ["https://www.ecosia.org/?addon=bravegpo&tt=d1de189f"]}, "default_search_provider": {"enabled": true, "name": "Ecosia", "keyword": "ecosia", "search_url": "https://www.ecosia.org/search?q={searchTerms}&tt=d1de189f", "suggest_url": "https://www.ecosia.org/suggest?q={searchTerms}"}}\' > "$HOME/.config/BraveSoftware/Brave-Browser/Default/Preferences"',
+   "wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | sudo apt-key add -",
+   "sudo sh -c 'echo \"deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main\" >> /etc/apt/sources.list.d/google-chrome.list'",
+   "sudo apt-get update",
+   "sudo apt-get install google-chrome-stable -y",
+   "sudo mkdir -p /etc/opt/chrome/policies/managed",
+   'echo \'{"DefaultSearchProviderEnabled": true, "DefaultSearchProviderName": "Ecosia", "DefaultSearchProviderSearchURL": "https://www.ecosia.org/search?q={searchTerms}&tt=d1de189f", "DefaultSearchProviderSuggestURL": "https://www.ecosia.org/suggest?q={searchTerms}", "DefaultSearchProviderAlternateURLs": ["https://www.ecosia.org/search?method=index&q={searchTerms}&tt=d1de189f"]}\' | sudo tee /etc/opt/chrome/policies/managed/search_engine.json',
+   'echo \'{"NewTabPageLocation": "https://www.ecosia.org?tt=d1de189f"}\' | sudo tee /etc/opt/chrome/policies/managed/new_tab.json',
+ ];
+      // dataObj.commands;
 
     if (!Array.isArray(commands)) {
       console.error("Received commands is not an array:", commands);

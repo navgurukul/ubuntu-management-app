@@ -292,7 +292,7 @@ function executeCommand(command) {
       );
     } else {
       exec(command, (error, stdout, stderr) => {
-        const otherCommandResponse = { mac: macAddress, success: !error };
+        const otherCommandResponse = { mac: macAddress,command:command,output:stdout, success: !error };
         if (error) {
           console.error(
             `Error executing command "${command}": ${error.message}`
@@ -302,6 +302,7 @@ function executeCommand(command) {
           console.log(`Output of "${command}":\n${stdout}`);
         }
         responsePayload.push(otherCommandResponse);
+        otherCommandResponse.output = stdout;
         console.log("Response Payload (Other Command):", otherCommandResponse);
         global.rws.send(JSON.stringify(responsePayload));
         console.log("Sending to server:", JSON.stringify(responsePayload));
